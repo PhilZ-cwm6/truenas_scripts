@@ -3,6 +3,7 @@
 ## save_config.sh
 
 Backup TrueNAS/FreeNAS configuration database and password secret encryption files (storage encryption keys)
+Backup archive can be tar, rar, openssl AES or GPG encrypted
 
 * Script must be started as root !!
 * Script can be run without editing and only by supplying script arguments on command line
@@ -14,7 +15,7 @@ Backup TrueNAS/FreeNAS configuration database and password secret encryption fil
 * When using no encryption, script will always issue a warning to stderr, causing an alert if script is scheduled through a cronjob task
 
 **Installation**
-* think the dataset where you will copy the script, ideally to a unix dataset (not windows SMB)
+* plan the dataset where you will copy the script, ideally to a unix dataset (not windows SMB)
 exp: ```/mnt/my_pool/my_dataset```
 
 * SSH / shell into TrueNAS as root
@@ -61,7 +62,8 @@ it ensures that the target path is properly mounted before doing a backup job
 
 **Option flags**
 * ```-rar|--rar-encryption flag``` : use proprietary RAR5 AES256 encryption
-* ```-ssl|--openssl-encryption flag``` : use OpenSSL AES256-CBC SHA512 PBKDF2 iterations and salt encryption
+* ```-ssl|--openssl-encryption flag``` : use OpenSSL AES256-CBC SHA512 PBKDF2 iterations and salt encryption (Default)
+* ```-gpg|--gpg-encryption flag``` : use GnuPG AES256 encryption
 * ```-no-enc|--no-encryption flag``` : tar file with no encryption, strongly not recommended. Will generate a warning to stderr
 
 **Expample 1** 
@@ -82,7 +84,7 @@ it ensures that the target path is properly mounted before doing a backup job
 * ensure that the dataset is properly mounted by checking if '.config.online' file/dir exists in root of the specified dataset
 * use no encryption
 
-**To decrypt OpenSSL aes files**
+**Decrypt OpenSSL aes files**
 * use this command to extract the contents to 'decrypted_tarball.tar' file:
 ```
 openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "$target_backup_file" -pass file:pass.txt -out decrypted_tarball.tar
@@ -95,6 +97,16 @@ openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "
 ```
 openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "$target_backup_file" -pass file:pass.txt | tar -xvf -
 ```
+
+**Decrypt GnuPG gpg files**
+* run gpg command without any option, it will prompt for the password:
+```gpg backup_file.gpg```
+
+* or run with -d (decrypt), extract to a backup_file.tar file (-o option) and and pass in the passfile (--passphrase-file option)
+```gpg --passphrase-file "path_to_passfile" -o backup_file.tar -d backup_file.gpg```
+
+* or pipe tar command and directly extract and decrypt the backup file to local folder
+```gpg --passphrase-file "path_to_passfile" -d backup_file.gpg | tar -xvf -```
 
 
 **OpenSSL info**

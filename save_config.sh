@@ -59,7 +59,7 @@ version=1.1.2
 #
 # - or run with -d (decrypt), extract to a backup_file.tar file (-o option) and and pass in the passfile (--passphrase-file option)
 # gpg --passphrase-file "path_to_passfile" -o backup_file.tar -d backup_file.gpg
-
+#
 # - or pipe tar command and directly extract and decrypt the backup file to local folder
 # gpg --passphrase-file "path_to_passfile" -d backup_file.gpg | tar -xvf -
 
