@@ -13,6 +13,35 @@ Backup TrueNAS/FreeNAS configuration database and password secret encryption fil
 * The temporary database file is deleted after execution
 * When using no encryption, script will always issue a warning to stderr, causing an alert if script is scheduled through a cronjob task
 
+**Installation**
+* think the dataset where you will copy the script, ideally to a unix dataset (not windows SMB)
+exp: ```/mnt/my_pool/my_dataset```
+
+* SSH / shell into TrueNAS as root
+
+* create a directory to hold your scripts and ensure it can only be read by root to prevent access to your passwords
+exp:
+```mkdir /mnt/my_pool/my_dataset/scripts
+chmod 700 scripts
+chown root:wheel scripts
+```
+
+* copy the save_config.sh to the scripts directory and ensure it can only be executed by root
+```cp save_config.sh /mnt/my_pool/my_dataset/scripts/
+chmod 700 /mnt/my_pool/my_dataset/scripts/save_config.sh
+chown root:wheel /mnt/my_pool/my_dataset/scripts/save_config.sh
+```
+
+* create the file with your passphrase and ensure it is only readable by root
+```cd /mnt/my_pool/my_dataset/scripts
+touch save_config.pass
+chmod 600 save_config.pass
+chown root:wheel save_config.pass
+```
+
+* type in your password in the created pass file, either in nano/vi or using echo
+```echo 'my_super_pass >save_config.pass```
+
 
 **Syntax :**
 
@@ -22,7 +51,6 @@ Backup TrueNAS/FreeNAS configuration database and password secret encryption fil
 **Usage :**
 
 ```script_name.sh [-rar|-ssl|-no-enc] [target_mount_point] [filecheck_mount_point]```
-
 
 **Positional parameters :**
 * target_mount_point   : taget dataset/directory where the config files will be saved under a created subdir called 'save_config'
@@ -68,9 +96,13 @@ openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "
 openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "$target_backup_file" -pass file:pass.txt | tar -xvf -
 ```
 
+
 **OpenSSL info**
 * Script uses AES256-CBC with default 100'000 SHA512 iterations and default random salt
-* You can adjust iterations by changing the `openssl_iter` variable: higher values are more secure but slower. It is more secure to have a long entropy password than increasing iterations with short passwords
+* You can adjust iterations by changing the `openssl_iter` variable. Increase by a few tens of thouthands depending on your system
+* higher values are more secure but slower. Too slow can expose your system to DOS attacks.
+* It is more secure to have a long entropy password than increasing iterations with short passwords. Iterations only add a time penalty on dictionary attacks
+
 
 **RAR info**
 * Rar software must be separately installed

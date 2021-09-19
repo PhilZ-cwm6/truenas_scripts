@@ -2,14 +2,14 @@
 
 # https://github.com/PhilZ-cwm6/truenas_scripts
 # Script version
-version=1.1.1
+version=1.1.2
 
 # Backup TrueNAS/FreeNAS configuration database and password secret encryption files (storage encryption keys)
 # - must be started as root !!
 # - OPTIONAL: start by editing >>XXXX <<XXXX code parts
 
 # Syntax: script_name.sh [Options] [Positional params]
-# Usage : script_name.sh [-rar|-ssl|-no-enc] [target_mount_point] [filecheck_mount_point]
+# Usage : script_name.sh [-rar|-ssl|-gpg|-no-enc] [target_mount_point] [filecheck_mount_point]
 # - Positional parameters:
 #   + target_mount_point   : taget dataset/directory where the config files will be saved under a created subdir called 'save_config'
 #   + filecheck_mount_point: name of a file or directory that must be in the specified 'target_mount_point'
@@ -18,9 +18,10 @@ version=1.1.1
 #   + when provided by command line, they will override the 2 inscript variables
 #
 # - Option flags:
-#   + -rar|--rar-encryption flag : use proprietary RAR5 AES256 encryption
-#   + -ssl|--openssl-encryption flag : use OpenSSL AES256-CBC SHA512 PBKDF2 iterations and salt encryption
-#   + -no-enc|--no-encryption flag : tar file with no encryption, strongly not recommended. Will generate a warning to stderr
+#   + -rar|--rar-encryption     : use proprietary RAR5 AES256 encryption
+#   + -ssl|--openssl-encryption : use OpenSSL AES256-CBC SHA512 PBKDF2 iterations and salt encryption
+#   + -gpg|--gpg-encryption     : use GnuPG AES256 encryption (GPG)
+#   + -no-enc|--no-encryption   : tar file with no encryption, strongly not recommended. Will generate a warning to stderr
 
 # - Exp1: save_config.sh "/mnt/pool/tank/config" ".config.online"
 #   + backup config file and encryption keys to /mnt/pool/tank/config dataset
@@ -36,8 +37,8 @@ version=1.1.1
 #   + backup config file and encryption keys to /mnt/pool/tank/config dataset
 #   + ensure that the dataset is properly mounted by checking if '.config.online' file/dir exists in root of the specified dataset
 #   + use no encryption
-#
-# To decrypt OpenSSL aes files :
+
+# Decrypt OpenSSL aes files :
 # - use this command to extract the contents to 'decrypted_tarball.tar' file:
 # openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "$target_backup_file" -pass file:pass.txt -out decrypted_tarball.tar
 #
@@ -46,6 +47,21 @@ version=1.1.1
 #
 # - or you can extract the tar contents to current folder
 # openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "$target_backup_file" -pass file:pass.txt | tar -xvf -
+
+# Encrypt file using GnuPG:
+# [--pinentry-mode loopback] : because of a bug in TrueNAS causing the error "problem with the agent: Invalid IPC response"
+# gpg [options] --symmetric file_to_encrypt
+# gpg --cipher-algo aes256 --passphrase-file "path_to_passfile" --pinentry-mode loopback -o outputfile.gpg --symmetric file_to_encrypt
+
+# Decrypt GnuPG gpg files :
+# - run gpg command without any option, it will prompt for the password:
+# gpg backup_file.gpg
+#
+# - or run with -d (decrypt), extract to a backup_file.tar file (-o option) and and pass in the passfile (--passphrase-file option)
+# gpg --passphrase-file "path_to_passfile" -o backup_file.tar -d backup_file.gpg
+
+# - or pipe tar command and directly extract and decrypt the backup file to local folder
+# gpg --passphrase-file "path_to_passfile" -d backup_file.gpg | tar -xvf -
 
 
 #  ** Editable paths: >>XXXX <<XXXX **
@@ -76,6 +92,7 @@ tmp_dir="/root/tmp/$backup_dir_name"
 # - eventually edit openssl_iter variable if your CPU is slower/faster
 rar_crypt="false" # -rar|--rar-encryption flag
 openssl_crypt="false" # -ssl|--openssl-encryption flag
+gpg_crypt="false" # -gpg|--gpg-encryption flag
 openssl_iter=100000 # openssl pbkdf2 iterations: start with 100000 and increase depending on your CPU speed
 no_encryption="false" # -no-enc|--no-encryption flag
 
@@ -104,7 +121,7 @@ archive_dir_name="keep"
 script_path=$(dirname "$0")
 script_name=$(basename "$0")
 
-# Backup Password file path: the path for a the file containing the password for the target backup (rar and openssl encryption options)
+# Backup Password file path: the path for a the file containing the password for the target backup when using encryption
 # - the password file is in the same folder as this script file
 # - the password file name: same as the script file name, with last extension replaced by .pass
 # - Edit only if password file name or path needs to be changed
@@ -231,13 +248,13 @@ function main() {
 
     # When using encryption, error and exit if we have an empty password
     # - if no passfile is found: cat will output an error to stderr and $password remains unset/empty
-    # - if we continue, command rar -p"" will cause a prompt for password and 
+    # - if we use a prompt for password mode like rar -p"", the
     #   script would hang in cron job waiting for password to be entered by user
     # - Note: using 'cat' will remove any trailing new lines from the passfile !!
     if [ "$no_encryption" != "true" ]; then
         #password=$(<"$pass_file") # bash only
         password=$(cat "$pass_file")
-        [ -z "$password" ] && show_error 1 "ERROR: no rar password was set" "you must specify a password in $pass_file"
+        [ -z "$password" ] && show_error 1 "ERROR: no password was set" "you must specify a password in $pass_file"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
 
@@ -344,12 +361,13 @@ function save_config() {
     fi
 
     target_backup_tarball="$target_dir/$backup_archive_name".tar
-    target_backup_tarball_enc="$target_dir/$backup_archive_name".aes
+    target_backup_sslfile="$target_dir/$backup_archive_name".aes
     target_backup_rarfile="$target_dir/$backup_archive_name".rar
+    target_backup_gpgfile="$target_dir/$backup_archive_name".gpg
     target_backup_file=""
 
     # Compress the TrueNAS password file and config database into a restorable tar file
-    # Compress the tar file into a rar encrypted file
+    # Use encryption if not unset by user
     echo ""
     echo "---Archiving config databse and encryption keys---"
 
@@ -358,7 +376,7 @@ function save_config() {
         echo ""
         echo "> backup using openssl encryption..."
 
-        target_backup_file="$target_backup_tarball_enc"
+        target_backup_file="$target_backup_sslfile"
         tar -cf - \
             -C "$pwenc_dir" "$pwenc_file" \
             -C "$tmp_dir" "$config_db_name" \
@@ -375,6 +393,19 @@ function save_config() {
             -C "$tmp_dir" "$config_db_name" \
             | $rar a -@ -rr10 -s- -ep -m3 -ma -p"$password" -ilog"$log_file_stderr" "$target_backup_file" -si"$backup_archive_name".tar | sed -e 's/     .*OK/ OK/' -e 's/     .*100%/ 100%/'
               # we run two replace script iterations on the same command "-e", first to keep the last OK and second to keep the last 100%
+        command_status=$?
+    elif [ "$gpg_crypt" = "true" ]; then
+        # Encrypted GnuPG tarball
+        echo ""
+        echo "> backup using GPG encryption..."
+
+        target_backup_file="$target_backup_gpgfile"
+        tar -cf - \
+            -C "$pwenc_dir" "$pwenc_file" \
+            -C "$tmp_dir" "$config_db_name" \
+            | gpg --cipher-algo aes256 --passphrase-file "$pass_file" --pinentry-mode loopback -o "$target_backup_file" --symmetric
+              # [--pinentry-mode loopback] option : because of a bug in TrueNAS causing the error "problem with the agent: Invalid IPC response"
+              
         command_status=$?
     else
         # Non encrypted backup
@@ -413,8 +444,8 @@ function rm_old_backups() {
     echo "---Pruning backups older than $keep_days days---"
     echo "> searching $target_dir"
 
-    find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.rar' -o -name '*.tar' \) -mtime +"$keep_days" -print
-    #find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.rar' -o -name '*.tar' \) -mtime +"$keep_days" -exec rm -v {} \;
+    #find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.tar' -o -name '*.aes' -o -name '*.rar' -o -name '*.gpg' \) -mtime +"$keep_days" -print
+    find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.tar' -o -name '*.aes' -o -name '*.rar' -o -name '*.gpg' \) -mtime +"$keep_days" -exec rm -v {} \;
 }
 
 # Log passed args to stderr and preserve error code from caller
@@ -482,6 +513,10 @@ function parseArguments() {
                 openssl_crypt="true"
                 shift
                 ;;
+            -gpg|--gpg-encryption)
+                gpg_crypt="true"
+                shift
+                ;;
             -no-enc|--no-encryption)
                 no_encryption="true"
                 shift
@@ -502,7 +537,7 @@ function parseArguments() {
 
     # Check arguments logic to avoid redundant / non consistent parameters
     # - error if more than one encryption option is enabled
-    encryption_args=("$rar_crypt" "$openssl_crypt" "$no_encryption")
+    encryption_args=("$rar_crypt" "$openssl_crypt" "$gpg_crypt" "$no_encryption")
     count=0
     for flag in "${encryption_args[@]}"; do
         [ "$flag" = "true" ] && ((count++))
@@ -515,11 +550,12 @@ function parseArguments() {
     fi
 
     if [ "$count" -gt 1 ]; then
-        show_error 1 "ERROR: you cannot enable more than one encryption option '-rar | -ssl | -no-enc'"
+        show_error 1 "ERROR: you cannot enable more than one encryption option '-rar|-ssl|-gpg|-no-enc'"
         exit "$error_exit"
     fi
 
     # - warn if no encryption is enabled
+    #   show_error 0: will cause print to stderr but keep $error_exit to 0
     [ "$no_encryption" = "true" ] && show_error 0 "WARNING: using no encryption is not secure"
 
     # Parse remaining positional args [target_mount_point] and [filecheck_mount_point]
@@ -551,6 +587,7 @@ function parseArguments() {
     # Show effective parameters
     echo "> Flag --rar-encryption=$rar_crypt"
     echo "> Flag --openssl-encryption=$openssl_crypt"
+    echo "> Flag --gpg-encryption=$gpg_crypt"
     echo "> Flag --no-encryption=$no_encryption"
     echo "> Positional args=$POSITIONAL_PARAMS"
     echo "> Target mountpoint: $target_mount_point/$filecheck_mount_point"
@@ -567,7 +604,7 @@ function printVersion() {
     echo "usage: save_config.sh [-options] [target_mount_point] [filecheck_mount_point]"
     echo "- target_mount_point   : target dataset/directory for the backup"
     echo "- filecheck_mount_point: file/dir in 'target_mount_point' to ensure that the target is properly mounted"
-    echo "- options : [-rar|--rar-encryption][-ssl|--openssl-encryption][-no-enc|--no-encryption]"
+    echo "- options : [-rar|--rar-encryption][-ssl|--openssl-encryption][-gpg|--gpg-encryption][-no-enc|--no-encryption]"
     echo "- defaults: backup using openSSL encryption to in-script path 'target_mount_point'"
     echo ""
 }
