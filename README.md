@@ -22,26 +22,31 @@ exp: ```/mnt/my_pool/my_dataset```
 
 * create a directory to hold your scripts and ensure it can only be read by root to prevent access to your passwords
 exp:
-```mkdir /mnt/my_pool/my_dataset/scripts
+```
+mkdir /mnt/my_pool/my_dataset/scripts
 chmod 700 scripts
 chown root:wheel scripts
 ```
 
 * copy the save_config.sh to the scripts directory and ensure it can only be executed by root
-```cp save_config.sh /mnt/my_pool/my_dataset/scripts/
+```
+cp save_config.sh /mnt/my_pool/my_dataset/scripts/
 chmod 700 /mnt/my_pool/my_dataset/scripts/save_config.sh
 chown root:wheel /mnt/my_pool/my_dataset/scripts/save_config.sh
 ```
 
 * create the file with your passphrase and ensure it is only readable by root
-```cd /mnt/my_pool/my_dataset/scripts
+```
+cd /mnt/my_pool/my_dataset/scripts
 touch save_config.pass
 chmod 600 save_config.pass
 chown root:wheel save_config.pass
 ```
 
 * type in your password in the created pass file, either in nano/vi or using echo
-```echo 'my_super_pass >save_config.pass```
+```
+echo 'my_super_pass >save_config.pass
+```
 
 
 **Syntax :**
@@ -67,7 +72,9 @@ it ensures that the target path is properly mounted before doing a backup job
 * ```-no-enc|--no-encryption flag``` : tar file with no encryption, strongly not recommended. Will generate a warning to stderr
 
 **Expample 1** 
-```save_config.sh "/mnt/pool/tank/config" ".config.online"```
+```
+save_config.sh "/mnt/pool/tank/config" ".config.online"
+```
 * backup config file and encryption keys to /mnt/pool/tank/config dataset
 * ensure that the dataset is properly mounted by checking if '.config.online' file/dir exists in root of the specified dataset
 * default to openssl encryption
@@ -79,7 +86,9 @@ it ensures that the target path is properly mounted before doing a backup job
 * use optional rar5 encryption (you must install rar software)
 
 **Expample 3**
-```save_config.sh --no-encryption "/mnt/pool/tank/config" ".config.online"```
+```
+save_config.sh --no-encryption "/mnt/pool/tank/config" ".config.online"
+```
 * backup config file and encryption keys to /mnt/pool/tank/config dataset
 * ensure that the dataset is properly mounted by checking if '.config.online' file/dir exists in root of the specified dataset
 * use no encryption
@@ -100,13 +109,24 @@ openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "
 
 **Decrypt GnuPG gpg files**
 * run gpg command without any option, it will prompt for the password:
-```gpg backup_file.gpg```
+```
+gpg backup_file.gpg
+```
 
-* or run with -d (decrypt), extract to a backup_file.tar file (-o option) and and pass in the passfile (--passphrase-file option)
-```gpg --passphrase-file "path_to_passfile" -o backup_file.tar -d backup_file.gpg```
+* or run with -d (decrypt), extract to a backup_file.tar file (-o option) and and pass in the passfile (--pinentry-mode loopback --passphrase-file file)
+```
+gpg --pinentry-mode loopback --passphrase-file "path_to_passfile" -o backup_file.tar -d backup_file.gpg
+```
 
 * or pipe tar command and directly extract and decrypt the backup file to local folder
-```gpg --passphrase-file "path_to_passfile" -d backup_file.gpg | tar -xvf -```
+```
+gpg --pinentry-mode loopback --passphrase-file "path_to_passfile" -d backup_file.gpg | tar -xvf -
+```
+
+* or be prompted for the password:
+```
+gpg -d backup_file.gpg | tar -xvf -
+```
 
 
 **OpenSSL info**

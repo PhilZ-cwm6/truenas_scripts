@@ -2,7 +2,7 @@
 
 # https://github.com/PhilZ-cwm6/truenas_scripts
 # Script version
-version=1.1.2
+version=1.1.3
 
 # Backup TrueNAS/FreeNAS configuration database and password secret encryption files (storage encryption keys)
 # - must be started as root !!
@@ -49,19 +49,22 @@ version=1.1.2
 # openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter "$openssl_iter" -salt -in "$target_backup_file" -pass file:pass.txt | tar -xvf -
 
 # Encrypt file using GnuPG:
-# [--pinentry-mode loopback] : because of a bug in TrueNAS causing the error "problem with the agent: Invalid IPC response"
+# [--pinentry-mode loopback] : needed in new gpg for supplying unencryped passwords on command line. Else, we get the error "problem with the agent: Invalid IPC response"
 # gpg [options] --symmetric file_to_encrypt
-# gpg --cipher-algo aes256 --passphrase-file "path_to_passfile" --pinentry-mode loopback -o outputfile.gpg --symmetric file_to_encrypt
+# gpg --cipher-algo aes256 --pinentry-mode loopback --passphrase-file "path_to_passfile" -o outputfile.gpg --symmetric file_to_encrypt
 
 # Decrypt GnuPG gpg files :
 # - run gpg command without any option, it will prompt for the password:
 # gpg backup_file.gpg
 #
-# - or run with -d (decrypt), extract to a backup_file.tar file (-o option) and and pass in the passfile (--passphrase-file option)
-# gpg --passphrase-file "path_to_passfile" -o backup_file.tar -d backup_file.gpg
+# - or run with -d (decrypt), extract to a backup_file.tar file (-o option) and and pass in the passfile (--pinentry-mode loopback --passphrase-file filepath)
+# gpg --pinentry-mode loopback --passphrase-file "path_to_passfile" -o backup_file.tar -d backup_file.gpg
 #
 # - or pipe tar command and directly extract and decrypt the backup file to local folder
-# gpg --passphrase-file "path_to_passfile" -d backup_file.gpg | tar -xvf -
+# gpg --pinentry-mode loopback --passphrase-file "path_to_passfile" -d backup_file.gpg | tar -xvf -
+#
+# - or be prompted for the password:
+# gpg -d backup_file.gpg | tar -xvf -
 
 
 #  ** Editable paths: >>XXXX <<XXXX **
@@ -403,8 +406,8 @@ function save_config() {
         tar -cf - \
             -C "$pwenc_dir" "$pwenc_file" \
             -C "$tmp_dir" "$config_db_name" \
-            | gpg --cipher-algo aes256 --passphrase-file "$pass_file" --pinentry-mode loopback -o "$target_backup_file" --symmetric
-              # [--pinentry-mode loopback] option : because of a bug in TrueNAS causing the error "problem with the agent: Invalid IPC response"
+            | gpg --cipher-algo aes256 --pinentry-mode loopback --passphrase-file "$pass_file" -o "$target_backup_file" --symmetric
+              # [--pinentry-mode loopback] : needed in new gpg for supplying unencryped passwords on command line. Else, we get the error "problem with the agent: Invalid IPC response"
               
         command_status=$?
     else
