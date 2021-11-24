@@ -45,7 +45,7 @@ chown root:wheel save_config.pass
 
 * type in your password in the created pass file, either in nano/vi or using echo
 ```
-echo 'my_super_pass >save_config.pass
+echo 'my_super_pass' >save_config.pass
 ```
 
 
@@ -60,8 +60,7 @@ echo 'my_super_pass >save_config.pass
 
 **Positional parameters :**
 * target_mount_point   : taget dataset/directory where the config files will be saved under a created subdir called 'save_config'
-* filecheck_mount_point: name of a file or directory that must be in the specified 'target_mount_point'
-it ensures that the target path is properly mounted before doing a backup job
+* filecheck_mount_point: name of a file or directory that must be in the specified 'target_mount_point'. It ensures that the target path is properly mounted before doing a backup job
 * if omitted, you must edit below 'target_mount_point' and 'filecheck_mount_point' variables
 * when provided by command line, they will override the 2 inscript variables
 
