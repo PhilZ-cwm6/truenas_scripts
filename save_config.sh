@@ -2,7 +2,7 @@
 
 # https://github.com/PhilZ-cwm6/truenas_scripts
 # Script version
-version=1.1.3
+version=1.1.6
 
 # Backup TrueNAS/FreeNAS configuration database and password secret encryption files (storage encryption keys)
 # - must be started as root !!
@@ -75,23 +75,27 @@ version=1.1.3
 # You can omit them if you supply the path in command line (will override below $target_mount_point and $filecheck_mount_point)
 # - target_mount_point: mount point target dataset or directory relative to the main freeBSD host
 # - filecheck_mount_point: name of a file or directory in the root of $target_mount_point. Used to verify that the target directory is properly mounted
-# - backup_dir_name: name of the directory where backups and logs are stored
-# - target_dir: directory path where the backup files will be stored
-# - tmp_dir: temp directory used only for the sqlite3 backup
 # >>XXXX
 target_mount_point=""
 filecheck_mount_point=""
+# <<XXXX
+
+# Name of the directory where backups and logs are stored
+# - directory will be created under $target_mount_point
+# >>XXXX
 backup_dir_name="save_config"
 # <<XXXX
-target_dir="$target_mount_point"/"$backup_dir_name"
+
+# Name of the temp directory (used only for the sqlite3 backup)
+# >>XXXX
 tmp_dir="/root/tmp/$backup_dir_name"
+# <<XXXX
 
 
 #  ** BELOW  >>XXXX <<XXXX editable paths are optional ! **
 #************************************************************
 
-
-# Define some global variables for our functions
+# Define encryption defaults for the backup archive
 # - eventually edit openssl_iter variable if your CPU is slower/faster
 rar_crypt="false" # -rar|--rar-encryption flag
 openssl_crypt="false" # -ssl|--openssl-encryption flag
@@ -99,17 +103,11 @@ gpg_crypt="false" # -gpg|--gpg-encryption flag
 openssl_iter=100000 # openssl pbkdf2 iterations: start with 100000 and increase depending on your CPU speed
 no_encryption="false" # -no-enc|--no-encryption flag
 
-# Set the target mount point for backup files and logging
-target_mount_point="${target_mount_point%/}" # remove trailing / from target_mount_point name
-
 # Set log file variable
 # >>XXXX
-log_path="$target_mount_point"/logs
-log_file_name="$backup_dir_name".log # holds stdout and stderr
+log_file_name="$backup_dir_name.log" # holds stdout and stderr
 log_file_name_err=__ERROR__"$log_file_name" # only stderr
 # <<XXXX
-log_file="$log_path"/"$log_file_name"
-log_file_stderr="$log_path"/"$log_file_name_err"
 
 # Option to prune archive files older than x days
 # If you manually move an archive file to the target subfolder 'archive_dir_name', it will be excluded from pruning
@@ -136,14 +134,15 @@ pass_file="$pass_file_path/$pass_file_name"
 
 # Paths where rar command is installed
 # - look first in default rar install path /usr/local/bin/rar
-# - then in some custom "~/bin/rar" paths for root and admin users
+# - then in some custom "~/bin/rar" paths for root and a custom user
 # - customize below path if you install rar elsewhere
 # >>XXXX
-admin_user_home=$(grep ^admin: /etc/passwd | cut -d: -f6)
+rar_user="admin"
+rar_user_home=$(grep ^"$rar_user": /etc/passwd | cut -d: -f6)
 rar_paths=(
     "/usr/local/bin/rar"
     "/root/bin/rar"
-    "$admin_user_home/bin/rar"
+    "$rar_user_home/bin/rar"
 )
 # <<XXXX
 
@@ -162,10 +161,16 @@ config_db_name="freenas-v1.db"
 
 
 # Some global variables for the functions
-declare target_mount_point # target mount point for backup files and logging
+# - target_dir: directory path where the backup files will be stored
+# - log_path: directory path where log files will be stored
+# - log_file: path to stdout+stderr log file ($log_path/$log_file_name)
+# - log_file_stderr: path to stderr log file ($log_path/$log_file_name_err)
+declare target_dir
+declare log_path
+declare log_file
+declare log_file_stderr
 declare target_backup_file # generated target backup file with path
-declare log_file log_file_stderr
-declare POSITIONAL_PARAMS= # any other arguments without "-" prefix: not used
+declare -a POSITIONAL_PARAMS # any other arguments without "-" prefix
 
 # Return value used to keep success/error code status of commands ($?)
 # - used to exit on a command error after calling show_error() function
@@ -175,15 +180,31 @@ error_exit=0
 # - output is not logged to a file but to stderr because the log file is not yet properly set !
 # - redirect stdout to stderr for cronjob error alert
 # - receives only positional arguments, not option flags (not used currently)
-function checkBackupPaths() {
+function setBackupPaths() {
 : <<'DEBUG_CODE'
-    echo "arg1=$1   arg2=$2"
+    i=0
     for arg in "$@"; do
-        echo arg="$arg"
+        echo "arg $i = $arg"
+        ((i++))
     done
     exit
 DEBUG_CODE
-    # - ensure that taget path was set either by command line args or in the script variables
+    # Set the target and log paths if target dataset was specified by command line arguments
+    target_mount_point="${target_mount_point%/}" # remove trailing / from target_mount_point name
+    target_dir="$target_mount_point/$backup_dir_name"
+    log_path="$target_mount_point/logs"
+    log_file="$log_path/$log_file_name"
+    log_file_stderr="$log_path/$log_file_name_err"
+
+    echo ""
+    echo "Setting Backup Paths..."
+    echo "> Target mountpoint: $target_mount_point/$filecheck_mount_point"
+    echo "> Target directory : $target_dir"
+    echo "> Log file         : $log_file"
+    echo "> Error log file   : $log_file_stderr"
+    echo ""
+
+    # - ensure that target path was set either by command line args or in the script variables
     if [ -z "$target_mount_point" ] || [ -z "$filecheck_mount_point" ]; then
         show_error 1 "ERROR: syntax error" \
             "Script needs 2 arguments" \
@@ -193,10 +214,10 @@ DEBUG_CODE
     fi
 
     # Ensure the target mount point is properly mounted before creating any files on the target
-    if [ ! -f "$target_mount_point"/"$filecheck_mount_point" ] && [ ! -d "$target_mount_point"/"$filecheck_mount_point" ] ; then
+    if [ ! -f "$target_mount_point/$filecheck_mount_point" ] && [ ! -d "$target_mount_point/$filecheck_mount_point" ] ; then
         show_error 1 "ERROR: TARGET DIRECTORY NOT MOUNTED" \
-            "ensure the directory is properly mounted and the below file exists at its root:" \
-            "$target_mount_point"/"$filecheck_mount_point"
+            "ensure the directory is properly mounted and the below file/dir exists at its root:" \
+            "$target_mount_point/$filecheck_mount_point"
         exit 1
     fi
 
@@ -226,6 +247,10 @@ DEBUG_CODE
 # $0 is always the script name and not the function name
 function main() {
     # Print version
+    echo ""
+    echo "-------------------------------------------------"
+    echo ""
+
     date
     printVersion
 
@@ -297,10 +322,6 @@ function main() {
     echo "TrueNAS settings backup completed"
 
     date
-
-    echo ""
-    echo "-------------------------------------------------"
-    echo ""
 } > >(tee -a "$log_file") 2> >(tee -a "$log_file_stderr" | tee -a "$log_file" >&2)
     # 1rst tee writes {script block} STDOUT (} >) to a file + we preserve it on STDOUT
     # 2nd tee writes {script block} STDERR (2>) to a different file + we redirect 2nd tee STDOUT (actually {script block} STDERR) to 3rd tee
@@ -314,19 +335,19 @@ function save_config() {
     # Get current OS version (used to set the target backup file name)
     # - output is in the form of: TrueNAS-12.0-U5.1 (6c639bd48a)
     # - include into () to transform the string into an array of space separated strings
-    freenas_version=()
-    IFS=" " read -r -a freenas_version < <( grep -i truenas /etc/version )
-    if [ ${#freenas_version[@]} -eq 0 ]; then
-        IFS=" " read -r -a freenas_version < <( grep -i freenas /etc/version )
+    truenas_version=()
+    IFS=" " read -r -a truenas_version < <( grep -i truenas /etc/version )
+    if [ ${#truenas_version[@]} -eq 0 ]; then
+        IFS=" " read -r -a truenas_version < <( grep -i freenas /etc/version )
     fi
 
-    if [ ${#freenas_version[@]} -eq 0 ] || [ -z "${freenas_version[0]}" ]; then
-        freenas_version[0]="UNKNOWN"
+    if [ ${#truenas_version[@]} -eq 0 ] || [ -z "${truenas_version[0]}" ]; then
+        truenas_version[0]="UNKNOWN"
     fi
 
     # Form a unique, timestamped filename for the backup configuration database and tarball
     P1=$(hostname -s)
-    P2="${freenas_version[0]}" # we only keep the part: TrueNAS-12.0-U5.1 and omit the build code (6c639bd48a)
+    P2="${truenas_version[0]}" # we only keep the part: TrueNAS-12.0-U5.1 and omit the build code (6c639bd48a)
     P3=$(date +%Y%m%d%H%M%S)
     backup_archive_name="$P1"-"$P2"-"$P3"
 
@@ -396,6 +417,7 @@ function save_config() {
             -C "$tmp_dir" "$config_db_name" \
             | $rar a -@ -rr10 -s- -ep -m3 -ma -p"$password" -ilog"$log_file_stderr" "$target_backup_file" -si"$backup_archive_name".tar | sed -e 's/     .*OK/ OK/' -e 's/     .*100%/ 100%/'
               # we run two replace script iterations on the same command "-e", first to keep the last OK and second to keep the last 100%
+              # do not use -ow to preserve ownership, since we're piping the input from tar and the rar will not find the input tar file
         command_status=$?
     elif [ "$gpg_crypt" = "true" ]; then
         # Encrypted GnuPG tarball
@@ -408,7 +430,7 @@ function save_config() {
             -C "$tmp_dir" "$config_db_name" \
             | gpg --cipher-algo aes256 --pinentry-mode loopback --passphrase-file "$pass_file" -o "$target_backup_file" --symmetric
               # [--pinentry-mode loopback] : needed in new gpg for supplying unencryped passwords on command line. Else, we get the error "problem with the agent: Invalid IPC response"
-              
+
         command_status=$?
     else
         # Non encrypted backup
@@ -508,6 +530,11 @@ function show_error() {
 function parseArguments() {
     while (( "$#" )); do
         case "$1" in # this will skip and drop any empty argument !
+            # Do not allow commands with following chars: &;({<>`|*
+            *\&*|*\;*|*\(*|*\{*|*\<*|*\>*|*\`*|*\|*|*\**)
+                show_error 1 "ERROR: non allowed chars in $1"
+                exit 1
+                ;;
             -rar|--rar-encryption)
                 rar_crypt="true"
                 shift
@@ -528,15 +555,15 @@ function parseArguments() {
                 show_error 1 "ERROR: Unsupported flag $1"
                 exit 1
                 ;;
-            *) # preserve positional arguments
-                POSITIONAL_PARAMS="$POSITIONAL_PARAMS $1"
+            *) # preserve positional arguments in an array variable
+                POSITIONAL_PARAMS+=("$1")
                 shift
                 ;;
         esac
     done
 
     # Set positional arguments in their proper place
-    eval set -- "$POSITIONAL_PARAMS"
+    set -- "${POSITIONAL_PARAMS[@]}"
 
     # Check arguments logic to avoid redundant / non consistent parameters
     # - error if more than one encryption option is enabled
@@ -571,11 +598,11 @@ function parseArguments() {
         [ "$#" -lt 2 ] && show_error 1 "ERROR: syntax error" "'target_mount_point' and 'filecheck_mount_point' cannot be used one without the other" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-        # case smart *** using: save_config.sh '' '' (never true because 'case "$1" in # ' above will drop any empty argument !)
+        # case smart *** using: $script_name.sh '' '' (never true because 'case "$1" in # ' above will drop any empty argument !)
         [ -z "$1" ] && [ -z "$2" ] && show_error 1 "ERROR: syntax error" "Do not use empty parameters !" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-        # case using something like: save_config.sh '' "file_name" (never true because 'case "$1" in # ' above will drop any empty argument !)
+        # case using something like: $script_name.sh '' "file_name" (never true because 'case "$1" in # ' above will drop any empty argument !)
         [ -n "$1" ] && [ -z "$2" ] && show_error 1 "ERROR: syntax error" "You cannot specify 'target_mount_point' without 'filecheck_mount_point'" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ -z "$1" ] && [ -n "$2" ] && show_error 1 "ERROR: syntax error" "You cannot specify 'filecheck_mount_point' without 'target_mount_point'" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
@@ -592,9 +619,7 @@ function parseArguments() {
     echo "> Flag --openssl-encryption=$openssl_crypt"
     echo "> Flag --gpg-encryption=$gpg_crypt"
     echo "> Flag --no-encryption=$no_encryption"
-    echo "> Positional args=$POSITIONAL_PARAMS"
-    echo "> Target mountpoint: $target_mount_point/$filecheck_mount_point"
-    echo "> Target directory : $target_mount_point/$backup_dir_name"
+    echo "> Positional args=${POSITIONAL_PARAMS[*]}"
 
     return $?
 }
@@ -602,9 +627,9 @@ function parseArguments() {
 # Print version and syntax
 function printVersion() {
     echo ""
-    echo "save_config version $version"
+    echo "$script_name version $version"
     echo "https://github.com/PhilZ-cwm6/truenas_scripts"
-    echo "usage: save_config.sh [-options] [target_mount_point] [filecheck_mount_point]"
+    echo "usage: $script_name.sh [-options] [target_mount_point] [filecheck_mount_point]"
     echo "- target_mount_point   : target dataset/directory for the backup"
     echo "- filecheck_mount_point: file/dir in 'target_mount_point' to ensure that the target is properly mounted"
     echo "- options : [-rar|--rar-encryption][-ssl|--openssl-encryption][-gpg|--gpg-encryption][-no-enc|--no-encryption]"
@@ -618,7 +643,7 @@ parseArguments "$@" || show_error $? "ERROR parsing script arguments"
 
 # Check if target and log paths are mounted and writable
 # - preserve positional params args (not used currently)
-checkBackupPaths $POSITIONAL_PARAMS || show_error $? "ERROR setting backup paths"
+setBackupPaths "${POSITIONAL_PARAMS[@]}" || show_error $? "ERROR setting backup paths"
 [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
 # Start script main function
