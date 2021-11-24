@@ -159,7 +159,6 @@ config_db_name="freenas-v1.db"
 #  ** NO FURTHER EDITS ARE NEEDED BELOW **
 #*******************************************
 
-
 # Some global variables for the functions
 # - target_dir: directory path where the backup files will be stored
 # - log_path: directory path where log files will be stored
@@ -232,7 +231,7 @@ DEBUG_CODE
     # Create the log path
     # - it is needed to be able to use it as a redirect at the end of our script block
     # - it is important to preserve stderr so that the cron job can send an email with stderr if job fails
-    mkdir -p "$log_path" || show_error 1 "ERROR: Failed to create log di: $log_path"
+    mkdir -p "$log_path" || show_error 1 "ERROR: Failed to create log directory: $log_path"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     touch "$log_file" || show_error 1 "ERROR: Failed to access log file: $log_file"
@@ -272,7 +271,10 @@ function main() {
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     chown root:wheel "$tmp_dir" || show_error $? "ERROR setting owner of temp directory: $tmp_dir"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
+
     chmod 700 "$tmp_dir" || show_error $? "ERROR setting permissions of temp directory: $tmp_dir"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # When using encryption, error and exit if we have an empty password
     # - if no passfile is found: cat will output an error to stderr and $password remains unset/empty
@@ -479,7 +481,7 @@ function rm_old_backups() {
 function show_error() {
     # $1 must be an integer value because it is used as a return/exit code
     error_exit="$1"
-    curr_date="$(date)"
+    curr_date=$(date)
     if ! [[ "$error_exit" =~ ^[0-9]+$ ]]; then
         {
             echo "INTERNAL ERROR IN FUNCTION show_error()"
