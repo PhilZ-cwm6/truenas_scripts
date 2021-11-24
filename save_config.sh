@@ -2,7 +2,7 @@
 
 # https://github.com/PhilZ-cwm6/truenas_scripts
 # Script version
-version=1.1.7
+version=1.1.8
 
 # Backup TrueNAS/FreeNAS configuration database and password secret encryption files (storage encryption keys)
 # - must be started as root !!
