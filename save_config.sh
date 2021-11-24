@@ -2,7 +2,7 @@
 
 # https://github.com/PhilZ-cwm6/truenas_scripts
 # Script version
-version=1.1.6
+version=1.1.7
 
 # Backup TrueNAS/FreeNAS configuration database and password secret encryption files (storage encryption keys)
 # - must be started as root !!
@@ -299,16 +299,17 @@ function main() {
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
 
+    echo "Starting config file and passwords backup"
     save_config "$@"
     rm_old_backups
 
     echo ""
     echo "Config file and encryption keys saved to $target_dir"
     echo "Log file: $log_file"
-    echo ""
 
     # Print decryption info if openssl was used
     if [ "$openssl_crypt" = "true" ]; then
+        echo ""
         echo "OpenSSL AES Decryption Instructions:"
         echo " - decrypt to a tar file:"
         echo "openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter '$openssl_iter' -salt -in '$target_backup_file' -pass file:passfile.pass -out decrypted_tarball.tar"
@@ -317,7 +318,6 @@ function main() {
         echo "openssl enc -d -aes-256-cbc -md sha512 -pbkdf2 -iter '$openssl_iter' -salt -in '$target_backup_file' -pass file:passfile.pass | tar -xvf -"
     fi
 
-    echo ""
     echo ""
     echo "TrueNAS settings backup completed"
 
@@ -330,7 +330,8 @@ function main() {
 
 # Backup TrueNAS settings
 function save_config() {
-    echo "Starting config file and passwords backup"
+    echo ""
+    echo "---Generating backup file name---"
 
     # Get current OS version (used to set the target backup file name)
     # - output is in the form of: TrueNAS-12.0-U5.1 (6c639bd48a)
@@ -343,6 +344,7 @@ function save_config() {
 
     if [ ${#truenas_version[@]} -eq 0 ] || [ -z "${truenas_version[0]}" ]; then
         truenas_version[0]="UNKNOWN"
+        show_error 0 "> WARNING: could not find the current OS version !!"
     fi
 
     # Form a unique, timestamped filename for the backup configuration database and tarball
@@ -350,6 +352,7 @@ function save_config() {
     P2="${truenas_version[0]}" # we only keep the part: TrueNAS-12.0-U5.1 and omit the build code (6c639bd48a)
     P3=$(date +%Y%m%d%H%M%S)
     backup_archive_name="$P1"-"$P2"-"$P3"
+    echo "> Backup filename: $backup_archive_name "
 
     # Delete any old temporary file:
     echo ""
@@ -359,7 +362,7 @@ function save_config() {
 
     # Backup the config database file to the temporary directory
     echo ""
-    echo "---Backing up config database---"
+    echo "---Backing up config sqlite database---"
 
     /usr/local/bin/sqlite3 "$config_db_dir/$config_db_name" ".backup main '$tmp_dir/$config_db_name'"
 
@@ -368,17 +371,16 @@ function save_config() {
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     echo ""
-    echo "> config database backup completed: $tmp_dir/$config_db_name"
+    echo "> Backup of config database completed: $tmp_dir/$config_db_name"
 
     # Check integrity of the sqlite3 backup databse
     echo ""
     echo "---Checking config database backup file integrity---"
 
-    command_status=$(sqlite3 "$tmp_dir/$config_db_name" "pragma integrity_check;")
+    command_status=$(/usr/local/bin/sqlite3 "$tmp_dir/$config_db_name" "pragma integrity_check;")
 
     if [ "$command_status" = "ok" ]; then
-        echo ""
-        echo "> config database backup integrity check ok"
+        echo "> Config database backup integrity check ok"
     else
         show_error 1 "> config database backup file was corrupted !"
         exit 1
@@ -397,8 +399,7 @@ function save_config() {
 
     if [ "$openssl_crypt" = "true" ]; then
         # Encrypted openssl tarball
-        echo ""
-        echo "> backup using openssl encryption..."
+        echo "> Backup using openssl encryption..."
 
         target_backup_file="$target_backup_sslfile"
         tar -cf - \
@@ -408,8 +409,7 @@ function save_config() {
         command_status=$?
     elif [ "$rar_crypt" = "true" ]; then
         # Encrypted rar5 tarball
-        echo ""
-        echo "> backup using rar5 encryption..."
+        echo "> Backup using rar5 encryption..."
 
         target_backup_file="$target_backup_rarfile"
         tar -cf - \
@@ -421,8 +421,7 @@ function save_config() {
         command_status=$?
     elif [ "$gpg_crypt" = "true" ]; then
         # Encrypted GnuPG tarball
-        echo ""
-        echo "> backup using GPG encryption..."
+        echo "> Backup using GPG encryption..."
 
         target_backup_file="$target_backup_gpgfile"
         tar -cf - \
@@ -434,7 +433,6 @@ function save_config() {
         command_status=$?
     else
         # Non encrypted backup
-        echo ""
         show_error 0 "> WARNING: backup using no encryption..."
 
         # no encryption is selected, only create a tarball
@@ -452,7 +450,7 @@ function save_config() {
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     echo ""
-    echo "> created $target_backup_file"
+    echo "> Created $target_backup_file"
     echo "    added $pwenc_file"
     echo "    added $config_db_name"
 
@@ -467,7 +465,7 @@ function save_config() {
 function rm_old_backups() {
     echo ""
     echo "---Pruning backups older than $keep_days days---"
-    echo "> searching $target_dir"
+    echo "> Searching $target_dir"
 
     #find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.tar' -o -name '*.aes' -o -name '*.rar' -o -name '*.gpg' \) -mtime +"$keep_days" -print
     find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.tar' -o -name '*.aes' -o -name '*.rar' -o -name '*.gpg' \) -mtime +"$keep_days" -exec rm -v {} \;
@@ -481,14 +479,14 @@ function rm_old_backups() {
 function show_error() {
     # $1 must be an integer value because it is used as a return/exit code
     error_exit="$1"
+    curr_date="$(date)"
     if ! [[ "$error_exit" =~ ^[0-9]+$ ]]; then
         {
             echo "INTERNAL ERROR IN FUNCTION show_error()"
             echo "function arg1=$1"
             echo "expected: integer value for arg1"
-            date
 
-            echo "-------------------------------------------------"
+            printf "!!!! %s !!!!\n" "$curr_date"
             echo ""
         } >&2
         exit 1 # fatal error, exit
@@ -500,9 +498,8 @@ function show_error() {
             echo "INTERNAL ERROR IN FUNCTION show_error()"
             echo "function arg2 not found or empty string"
             echo "expected arg2 to be a string with error message"
-            date
 
-            echo "-------------------------------------------------"
+            printf "!!!! %s !!!!\n" "$curr_date"
             echo ""
         } >&2
         exit 1 # fatal error, exit
@@ -515,9 +512,7 @@ function show_error() {
             echo "$error_msg"
         done
 
-        date
-
-        echo "-------------------------------------------------"
+        printf "!!!! %s !!!!\n" "$curr_date"
         echo ""
     } >&2
 
@@ -589,7 +584,7 @@ function parseArguments() {
     [ "$no_encryption" = "true" ] && show_error 0 "WARNING: using no encryption is not secure"
 
     # Parse remaining positional args [target_mount_point] and [filecheck_mount_point]
-    # - either we have 2 or no positional arguments (target_mount_point and filecheck_mount_point)
+    # - either we have 2 or no positional arguments
     if [ "$#" -ne 0 ]; then
         [ "$#" -gt 2 ] && show_error 1 "ERROR: syntax error" "Only 2 positional arguments are allowed" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
