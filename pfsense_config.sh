@@ -25,7 +25,7 @@ version=1.3.5
 
 ### SYNOPSIS:
 - Backups are performed and encrypted on the pfsense server using pfsense_send_config.sh script on pfsense
-- The script pfsense_send_config.sh script on pfsense server sends the encrypted backups and logs on a schedule to the TrueNAS local TFTP Server
+- The pfsense_send_config.sh script on pfsense server sends the encrypted backups and logs on a schedule to the TrueNAS local TFTP Server
 - This script starts the TFTP server, waits for 15 minutes, then turns off the TFTP Server
 - Once TFT server is shutoff, script checks if config and log files are present on the TFT Server root directory
 - It moves any config and log files to backup dataset under `$target_mount_point/pfsense_config`
@@ -49,7 +49,7 @@ version=1.3.5
 
 - if omitted, you must edit below `$target_mount_point` and `$filecheck_mount_point` variables
 - when provided by command line, they will override the 2 inscript variables
-- backups are stored under `$target_mount_point/save_config` directory
+- backups are stored under `$target_mount_point/pfsense_config` directory
 - logs are created under a directory: `$target_mount_point/logs`
 
 #### Options

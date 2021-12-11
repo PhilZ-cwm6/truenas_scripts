@@ -74,7 +74,7 @@ version=1.3.5
                                Will generate a warning to stderr
     -iter|--iterations-count : set a custom iterations count, overrides `$openssl_iter` variable
                                by default, if not set by options and `$openssl_iter` is kept as empty string in script,
-                               it will use default openssl value, compatible with pfsense GUI encryption
+                               it will use default openssl value
     -d|--decrypt             : decrypt mode
     -in|--input-file         : file to decrypt
     -out|--out-dir           : directory where uncrypted files will be extracted.

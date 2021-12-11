@@ -34,7 +34,7 @@ version=1.3.5
 ### SYNOPSIS:
 - Backups are performed and encrypted on the pfsense server
 - The backups and logs are stored locally on the pfsense server
-- The default storage locations for backup and log files are respectively `$target_mount_point/save_config` and `$target_mount_point/logs` directories
+- The default storage locations for backup and log files are respectively `$target_mount_point/pfsense_send_config` and `$target_mount_point/logs` directories
 - Default paths defined in script are respectively for logs and backups `/root/pfsense_send_config` and `/root/logs`
 - The target local directory `$target_mount_point` can be overriden either by command line or by editing in script variable `$target_mount_point`
 - The name of the local subdirectory `pfsense_send_config` can be changed by editing in script variable `$backup_dir_name`
@@ -75,7 +75,7 @@ version=1.3.5
 
 - if omitted, you must edit below `$target_mount_point` and `$filecheck_mount_point` variables
 - when provided by command line, they will override the 2 inscript variables
-- backups are stored under `$target_mount_point/save_config` directory
+- backups are stored under `$target_mount_point/pfsense_send_config` directory
 - logs are created under a directory: `$target_mount_point/logs`
 
 #### Options

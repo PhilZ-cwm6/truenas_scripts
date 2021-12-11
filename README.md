@@ -58,7 +58,7 @@
                                Will generate a warning to stderr
     -iter|--iterations-count : set a custom iterations count, overrides `$openssl_iter` variable
                                by default, if not set by options and `$openssl_iter` is kept as empty string in script,
-                               it will use default openssl value, compatible with pfsense GUI encryption
+                               it will use default openssl value
     -d|--decrypt             : decrypt mode
     -in|--input-file         : file to decrypt
     -out|--out-dir           : directory where uncrypted files will be extracted.
@@ -185,7 +185,7 @@ gpg -d backup_file.gpg | tar -xvf -
 
 ### SYNOPSIS:
 - Backups are performed and encrypted on the pfsense server using pfsense_send_config.sh script on pfsense
-- The script pfsense_send_config.sh script on pfsense server sends the encrypted backups and logs on a schedule to the TrueNAS local TFTP Server
+- The pfsense_send_config.sh script on pfsense server sends the encrypted backups and logs on a schedule to the TrueNAS local TFTP Server
 - This script starts the TFTP server, waits for 15 minutes, then turns off the TFTP Server
 - Once TFT server is shutoff, script checks if config and log files are present on the TFT Server root directory
 - It moves any config and log files to backup dataset under `$target_mount_point/pfsense_config`
@@ -209,7 +209,7 @@ gpg -d backup_file.gpg | tar -xvf -
 
 - if omitted, you must edit below `$target_mount_point` and `$filecheck_mount_point` variables
 - when provided by command line, they will override the 2 inscript variables
-- backups are stored under `$target_mount_point/save_config` directory
+- backups are stored under `$target_mount_point/pfsense_config` directory
 - logs are created under a directory: `$target_mount_point/logs`
 
 #### Options
@@ -260,7 +260,7 @@ gpg -d backup_file.gpg | tar -xvf -
 ### SYNOPSIS:
 - Backups are performed and encrypted on the pfsense server
 - The backups and logs are stored locally on the pfsense server
-- The default storage locations for backup and log files are respectively `$target_mount_point/save_config` and `$target_mount_point/logs` directories
+- The default storage locations for backup and log files are respectively `$target_mount_point/pfsense_send_config` and `$target_mount_point/logs` directories
 - Default paths defined in script are respectively for logs and backups `/root/pfsense_send_config` and `/root/logs`
 - The target local directory `$target_mount_point` can be overriden either by command line or by editing in script variable `$target_mount_point`
 - The name of the local subdirectory `pfsense_send_config` can be changed by editing in script variable `$backup_dir_name`
@@ -301,7 +301,7 @@ gpg -d backup_file.gpg | tar -xvf -
 
 - if omitted, you must edit below `$target_mount_point` and `$filecheck_mount_point` variables
 - when provided by command line, they will override the 2 inscript variables
-- backups are stored under `$target_mount_point/save_config` directory
+- backups are stored under `$target_mount_point/pfsense_send_config` directory
 - logs are created under a directory: `$target_mount_point/logs`
 
 #### Options
