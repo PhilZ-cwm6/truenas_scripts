@@ -13,11 +13,9 @@
 set -u -o pipefail
 
 # Script version
-version=1.3.4
+version=1.3.5
 
 : <<'README.MD'
-# TrueNAS Scripts
-
 ## save_config.sh
 
 ### FUNCTIONS
@@ -39,7 +37,7 @@ version=1.3.4
 - If no file format is specified, script will assume the openssl encryption as default
 - This default file format can be changed by editing in script value `$default_encryption`
 
-- Decrypting backup files is done with the "-d" option, associated with -in option
+- Decrypting backup files is done with the `-d|--decrypt` option, associated with -in option
 - Optional decrypting options are -out (output directory) and any input file format option `-ssl|-rar|-gpg|-tar`
 - See below examples for how to decrypt
 
@@ -69,16 +67,18 @@ version=1.3.4
     [-d|--decrypt][-in|--input-file][-out|--out-dir][one encryption option][-iter|--iterations-count]
 
 #### Options details
-    -ssl|--ssl-encryption   : generate an openssl encrypted backup
-    -rar|--rar-encryption   : generate a RAR5 AES256 encrypted backup. You must install rar binary
-    -gpg|--gpg-encryption   : generate a GnuPG AES256 encrypted backup (GPG)
-    -tar|--unencrypted-tar  : generate a tar file with no encryption, strongly not recommended.
-                              Will generate a warning to stderr
-    -iter|--iterations-count: set a custom iterations count, overrides `$openssl_iter` variable
-    -d|--decrypt            : decrypt mode
-    -in|--input-file        : file to decrypt
-    -out|--out-dir          : directory where uncrypted files will be extracted.
-                              If omitted, extracts to a `config.NNNN` directory created in local folder
+    -ssl|--ssl-encryption    : generate an openssl encrypted backup
+    -rar|--rar-encryption    : generate a RAR5 AES256 encrypted backup. You must install rar binary
+    -gpg|--gpg-encryption    : generate a GnuPG AES256 encrypted backup (GPG)
+    -tar|--unencrypted-tar   : generate a tar file with no encryption, strongly not recommended.
+                               Will generate a warning to stderr
+    -iter|--iterations-count : set a custom iterations count, overrides `$openssl_iter` variable
+                               by default, if not set by options and `$openssl_iter` is kept as empty string in script,
+                               it will use default openssl value, compatible with pfsense GUI encryption
+    -d|--decrypt             : decrypt mode
+    -in|--input-file         : file to decrypt
+    -out|--out-dir           : directory where uncrypted files will be extracted.
+                               if omitted, extracts to a `config.NNNN` directory created in local folder
 
 - if no encryption option is specified, use default encryption set in variable `$default_encryption`
 
@@ -137,12 +137,12 @@ echo 'my_super_pass' >save_config.pass
 
 
 ### Manually encrypt file using GnuPG:
+* gpg [options] --symmetric file_to_encrypt
 ```
 gpg --cipher-algo aes256 --pinentry-mode loopback --passphrase-file "path_to_passfile" -o outputfile.gpg --symmetric file_to_encrypt
 ```
 - [--pinentry-mode loopback] : needed in new gpg for supplying unencryped passwords on command line. Else, we get the error "problem with the agent: Invalid IPC response"
-- gpg [options] --symmetric file_to_encrypt
-- gpg --cipher-algo aes256 --pinentry-mode loopback --passphrase-file "path_to_passfile" -o outputfile.gpg --symmetric file_to_encrypt
+
 
 ### Manually Decrypt OpenSSL aes files
 * use this command to extract the contents to `decrypted_tarball.tar` file:
