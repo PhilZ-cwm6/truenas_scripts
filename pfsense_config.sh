@@ -96,8 +96,8 @@ README.MD
 # - target_mount_point: mount point target dataset or directory relative to the main freeBSD host
 # - filecheck_mount_point: name of a file or directory in the root of $target_mount_point. Used to verify that the target directory is properly mounted
 # >>XXXX
-target_mount_point="/mnt/main_data/tank/settings"
-filecheck_mount_point=".share.online"
+target_mount_point=""
+filecheck_mount_point=""
 # <<XXXX
 
 # Name of the directory where backups are stored
@@ -108,7 +108,7 @@ backup_dir_name="pfsense_config"
 
 # TFTP root folder (where source files are sent from pfsense)
 # >>XXXX
-source_dir="/mnt/main_data/tank/tftproot"
+source_dir=""
 # <<XXXX
 
 

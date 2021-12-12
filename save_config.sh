@@ -13,7 +13,7 @@
 set -u -o pipefail
 
 # Script version
-version=1.3.5
+version=1.3.6
 
 : <<'README.MD'
 ## save_config.sh
@@ -199,8 +199,8 @@ README.MD
 # - target_mount_point: mount point target dataset or directory relative to the main freeBSD host
 # - filecheck_mount_point: name of a file or directory in the root of $target_mount_point. Used to verify that the target directory is properly mounted
 # >>XXXX
-target_mount_point="/mnt/main_data/tank/settings"
-filecheck_mount_point=".share.online"
+target_mount_point=""
+filecheck_mount_point=""
 # <<XXXX
 
 # Name of the directory where backups are stored
@@ -248,23 +248,21 @@ pass_file_name="${script_name%.*}.pass" # scriptname.sh becomes scriptname
 pass_file="$pass_file_path/$pass_file_name"
 
 # Paths where rar command is installed
-# >>XXXX
-# Paths where rar command is installed
 #  - look first in default rar install path /usr/local/bin/rar
 #  - then in our custom "~/bin/rar" paths for root and admin users
 # >>XXXX
-admin_user_home=$(grep ^admin: /etc/passwd | cut -d: -f6)
+rar_user="admin"
+rar_user_home=$(grep ^"$rar_user": /etc/passwd | cut -d: -f6)
 rar_paths=(
     "/usr/local/bin/rar"
     "/root/bin/rar"
-    "$admin_user_home/bin/rar"
+    "$rar_user_home/bin/rar"
 )
 # <<XXXX
 rar=""
 for rarbin in "${rar_paths[@]}"; do
     [ -f "$rarbin" ] && rar="$rarbin" && break
 done
-# <<XXXX
 
 # Path where gpg command is installed
 # >>XXXX
