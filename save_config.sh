@@ -13,7 +13,7 @@
 set -u -o pipefail
 
 # Script version
-version=1.3.6
+version=1.3.7
 
 : <<'README.MD'
 ## save_config.sh
@@ -537,12 +537,6 @@ function save_config() {
 
     echo "> Backup filename: $backup_archive_name"
 
-    # Delete any old temporary file:
-    echo ""
-    echo "---Deleting old temporary files---"
-    #find "$tmp_dir" -type f -name '*.db' -print
-    $find "$tmp_dir" -type f -name '*.db' -exec $rm -v {} \;
-
     # Check if source file to backup exists and can be read
     # - passwords file
     if ! [ -f "$pwenc_dir/$pwenc_file" ] || ! [ -r "$pwenc_dir/$pwenc_file" ]; then
@@ -555,6 +549,9 @@ function save_config() {
         show_error 1 "ERROR: Cannot find/read Config file database: $config_db_dir/$config_db_name"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
+
+    # Delete any old temporary database file:
+    clean_tempfiles
 
     # Backup the config database file to the temporary directory
     echo ""
@@ -588,6 +585,9 @@ function save_config() {
     [ "$rar_crypt" = "true" ] && save_rar
     [ "$gpg_crypt" = "true" ] && save_gpg
     [ "$tar_no_crypt" = "true" ] && save_decrypted
+
+    # Delete any old temporary database file:
+    clean_tempfiles
 
     [ "$openssl_crypt" != "true" ] && [ "$rar_crypt" != "true" ] \
         && [ "$gpg_crypt" != "true" ] && [ "$tar_no_crypt" != "true" ] \
@@ -858,6 +858,13 @@ function rm_old_backups() {
 
     #$find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.aes' -o -name '*.rar' -o -name '*.gpg' -o -name '*.tar' \) -mtime +"$keep_days" -print
     $find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.aes' -o -name '*.rar' -o -name '*.gpg' -o -name '*.tar' \) -mtime +"$keep_days" -exec $rm -v {} \;
+}
+
+function clean_tempfiles() {
+    echo ""
+    echo "---Deleting temporary files---"
+    #$find "$tmp_dir" -type f -name '*.db' -print
+    $find "$tmp_dir" -type f -name '*.db' -exec $rm -v {} \;
 }
 
 # Check the password if encryption is set
