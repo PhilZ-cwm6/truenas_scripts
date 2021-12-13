@@ -13,7 +13,7 @@
 set -u -o pipefail
 
 # Script version
-version=1.3.7
+version=1.3.8
 
 : <<'README.MD'
 ## save_config.sh
@@ -291,6 +291,7 @@ find="/usr/bin/find"
 rm="/bin/rm"
 #mv="/bin/mv"
 tee="/usr/bin/tee"
+#cut="/usr/bin/cut"
 
 # Array with all binary paths to test
 # - rar and gpg are optional and tested before operations
@@ -338,10 +339,12 @@ declare -a POSITIONAL_PARAMS # any other arguments without "-" prefix
 # - If set here to true, they cannot be toggled off by command line option
 # - openssl_crypt [-ssl|--ssl-encryption]:
 #   + generate an encrypted openssl backup file
+#   + if $openssl_iter is left empty, use default openssl iter count
 # - openssl_iter [-iter|--iterations-count]: an integer
 #   + pbkdf2 iterations: start with 300000 and increase depending on your CPU speed
 #   + significant only if openssl_crypt is true
-#   + set to empty string for default openssl pbkdf2 iteration count, currently of 10000 as per source code (too low, security wise)
+#   + set to empty string for default openssl pbkdf2 iteration count,
+#     currently of 10000 as per source code (too low, security wise)
 # - rar_crypt [-rar|--rar-encryption]:
 #   + generate a rar encrypted config file
 # - gpg_crypt  [-gpg|--gpg-encryption]:
@@ -375,6 +378,10 @@ out_path=""
 # - used to exit on a command error after calling show_error() function
 # - only modified by show_error() function
 error_exit=0
+
+# On trap EXIT/INT, do not wipe_tmp_data() or wipe_tmp_logs() unless we created the temp files
+wipe_tmp_data_on_exit="false"
+wipe_tmp_logs_on_exit="false"
 
 # Config and log files are tagged with current date
 curr_date=""
@@ -498,11 +505,12 @@ function main() {
     date
     echo ""
 
-} > >($tee -a "$log_file") 2> >($tee -a "$log_file_stderr" | $tee -a "$log_file" >&2)
+} #> >($tee -a "$log_file") 2> >($tee -a "$log_file_stderr" | $tee -a "$log_file" >&2)
     # 1rst tee writes {script block} STDOUT (} >) to a file + we preserve it on STDOUT
     # 2nd tee writes {script block} STDERR (2>) to a different file + we redirect 2nd tee STDOUT (actually {script block} STDERR) to 3rd tee
     # 3rd tee writes STDERR to our main log file so that it contains all the screen equivalent output (stdout + stderr)
     # 3d tee redirects its STDOUT back to STDERR so that we preserve {script block} STDERR on the terminal STDERR
+    # disabled and we use fifo posix compatible method to properly trap termination signals
 
 # Backup TrueNAS settings
 function save_config() {
@@ -513,9 +521,9 @@ function save_config() {
     # - output is in the form of: TrueNAS-12.0-U5.1 (6c639bd48a)
     # - include into () to transform the string into an array of space separated strings
     truenas_version=()
-    IFS=" " read -r -a truenas_version < <( grep -i truenas /etc/version )
+    IFS=" " read -r -a truenas_version < <( $grep -i truenas /etc/version )
     if [ ${#truenas_version[@]} -eq 0 ]; then
-        IFS=" " read -r -a truenas_version < <( grep -i freenas /etc/version )
+        IFS=" " read -r -a truenas_version < <( $grep -i freenas /etc/version )
     fi
 
     if [ ${#truenas_version[@]} -eq 0 ] || [ -z "${truenas_version[0]}" ]; then
@@ -551,12 +559,18 @@ function save_config() {
     fi
 
     # Delete any old temporary database file:
-    clean_tempfiles
+    wipe_tmp_data
 
     # Backup the config database file to the temporary directory
     echo ""
     echo "---Creating temporary backup of sqlite database---"
 
+    # Temp file will be created after this.
+    # On early script interruption, the trap should clean up the temp files
+    # Note: the cleaning will not be logged if called by the trap
+    wipe_tmp_data_on_exit="true"
+
+    # sqlite3 copy the config database to temp dir
     /usr/local/bin/sqlite3 "$config_db_dir/$config_db_name" ".backup main '$tmp_dir/$config_db_name'"
 
     command_status=$?
@@ -586,8 +600,11 @@ function save_config() {
     [ "$gpg_crypt" = "true" ] && save_gpg
     [ "$tar_no_crypt" = "true" ] && save_decrypted
 
-    # Delete any old temporary database file:
-    clean_tempfiles
+    # Delete any old temporary database file (output will be logged to logfiles):
+    wipe_tmp_data
+
+    # On trap EXIT/INT, we no longer need a wipe_tmp_data()
+    wipe_tmp_data_on_exit="false"
 
     [ "$openssl_crypt" != "true" ] && [ "$rar_crypt" != "true" ] \
         && [ "$gpg_crypt" != "true" ] && [ "$tar_no_crypt" != "true" ] \
@@ -727,7 +744,7 @@ function decrypt_config() {
     [ -z "$input_file" ] && show_error 1 "INTERNAL ERROR: decrypt_config(): empty input_file"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-    # Check that there are no multiple decryption formats set to true
+    # Check that there are no multiple decryption formats set to true (in script edits)
     count=0
     [ "$openssl_crypt" = "true" ] && count=$((count + 1))
     [ "$rar_crypt" = "true" ] && count=$((count + 1))
@@ -860,11 +877,26 @@ function rm_old_backups() {
     $find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.aes' -o -name '*.rar' -o -name '*.gpg' -o -name '*.tar' \) -mtime +"$keep_days" -exec $rm -v {} \;
 }
 
-function clean_tempfiles() {
+function wipe_tmp_logs() {
     echo ""
-    echo "---Deleting temporary files---"
+    echo "---Deleting temp log files---"
+
+    # check if current temp log file exists and is a pipe
+    [ -p "$pfout_fifo" ] && $rm -v "$pfout_fifo"
+    [ -p "$pferr_fifo" ] && $rm -v "$pferr_fifo"
+}
+
+function wipe_tmp_data() {
+    echo ""
+    echo "---Deleting temp data files---"
+
     #$find "$tmp_dir" -type f -name '*.db' -print
     $find "$tmp_dir" -type f -name '*.db' -exec $rm -v {} \;
+}
+
+function clean_tempfiles() {
+    [ "$wipe_tmp_data_on_exit" = "true" ] && wipe_tmp_data
+    [ "$wipe_tmp_logs_on_exit" = "true" ] && wipe_tmp_logs
 }
 
 # Check the password if encryption is set
@@ -1169,8 +1201,7 @@ function printVersion() {
     echo "            [-tar|--unencrypted-tar][-iter|--iterations-count]"
     echo "            [-?|-help]"
     echo "- Decrypt : [-d|--decrypt][-in|--input-file][-out|--out-dir][encryption option]"
-    echo "- Defaults: backup using openSSL encryption to in-script path 'target_mount_point'"
-    echo "            format=$default_encryption | target root=$target_mount_point"
+    echo "- Defaults: backup using 'default_encryption' to in-script path 'target_mount_point'"
 }
 
 # Parse script arguments
@@ -1191,8 +1222,85 @@ fi
 setBackupPaths "$@" || show_error $? "ERROR setting backup and log paths"
 [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
+# Trap to cleanup temp files before main function
+# - Called on signal EXIT, or indirectly on INT QUIT TERM
+function sig_clean_exit() {
+    # save the return code of the script
+    err=$?
+
+    # reset trap for all signals to not interrupt clean_tempfiles() on any next signal
+    trap '' EXIT INT QUIT TERM
+
+    clean_tempfiles
+    exit $err # exit the script with saved $?
+}
+
+# - Called on signals INT QUIT TERM
+function sig_clean_int() {
+    # save error code (130 for SIGINT, 143 for SIGTERM, 131 for SIGQUIT)
+    err=$?
+
+    # some shells will call EXIT after the INT signal
+    # causing EXIT trap to be executed, so we trap EXIT after INT
+    trap '' EXIT 
+
+    (exit $err) # execute in a subshell just to pass $? to sig_clean_exit()
+
+    show_error 0 "WARNING: Script interrupted by signal $(( err - 128 )) "
+    sig_clean_exit
+}
+
+# - Set the signal traps
+trap sig_clean_exit EXIT
+trap sig_clean_int INT QUIT TERM
+
 # Start script main function for backup of config files
 # - we redirect stdout to $log_file AND terminal
 # - we redirect stderr to $log_file_stderr, $log_file AND terminal
 # - terminal and $log_file have both stdout and stderr, while $log_file_stderr only holds stderr
-main "$@"; exit
+#
+# POSIX sh doesn't support bash like process substitution.
+# On Bash, with process substitution we can no longer properly trap termination signals on subprocesses
+# Instead:
+# - mkfifo: we create temporary fifo files for stdout and stderr in $log_path
+# - trap: on exit or sigterm (Ctrl^C...) of script, always delete the fifo files
+# - main "$@" >"$pfout_fifo" 2>"$pferr_fifo" : redirect main() stdout and stderr to their respective fifo files
+# - tee -a "$log_file_stderr" < "$pferr_fifo" >>"$pfout_fifo":
+#   + $pferr_fifo is redirected to both $pfout_fifo in append mode (>>"$pfout_fifo")
+#     and to $log_file_stderr (tee -a "$log_file_stderr"), also in append mode (tee -a)
+#   + $pfout_fifo file will contain both stdout and stderr
+#   + $log_file_stderr: will hold stderr (from $pferr_fifo, appended by tee -a command)
+#   + stderr is also sent to terminal through the tee command
+# - tee -a "$log_file" < "$pfout_fifo":
+#   + finally, $pfout_fifo is appended to $log_file using the tee -a command
+#   + and also it is sent to terminal using the same tee command
+# - & : run each command line in parallel
+#
+# Notes:
+# - after an 'mv -v $log_file', the pfout_fifo would be redirected to the new moved file !
+# - so, instead we copy the $log_file to a new file, we empty it,
+#   and next script stdout will be written to the empty $log_file
+# - we then upload the $log_file copy, we remove the copy, and on next script run,
+#   the $log_file will be uploaded with its remaining data
+tmp_logs_dir="$log_path"
+[ -d "$tmp_logs_dir" ] || show_error 1 "ERROR: Internal error: tmp_logs_dir=$tmp_logs_dir not found !!"
+[ "$error_exit" -eq 0 ] || exit "$error_exit"
+
+pfout_fifo="$tmp_logs_dir/pfout_fifo.$$"
+pferr_fifo="$tmp_logs_dir/pferr_fifo.$$"
+
+echo "DEBUG: pfout_fifo=$pfout_fifo - pferr_fifo=$pferr_fifo"
+echo ""
+
+# Temp log files will be created after this.
+# On early script interruption, the trap should clean up the temp log files
+# Note: the cleaning will not be logged if called by the trap
+wipe_tmp_logs_on_exit="true"
+
+mkfifo "$pfout_fifo" "$pferr_fifo" || show_error $? "ERROR creating tmp log fifo files" "- pfout_fifo=$pfout_fifo" "- pferr_fifo=$pferr_fifo"
+[ "$error_exit" -eq 0 ] || exit "$error_exit"
+
+# Start main function with proper logging
+$tee -a "$log_file" < "$pfout_fifo" &
+    $tee -a "$log_file_stderr" < "$pferr_fifo" >>"$pfout_fifo" &
+    main "$@" >"$pfout_fifo" 2>"$pferr_fifo"; exit

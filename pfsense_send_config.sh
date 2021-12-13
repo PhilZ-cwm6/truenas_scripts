@@ -19,7 +19,7 @@
 set -u -o pipefail
 
 # Script version
-version=1.3.5
+version=1.3.8
 
 ## pfsense_send_config.sh
 #### !!! This script runs in the pfsense Server under root and sh POSIX shell !!!
@@ -245,6 +245,7 @@ cp="/bin/cp"
 rm="/bin/rm"
 mv="/bin/mv"
 tee="/usr/bin/tee"
+#cut="/usr/bin/cut"
 
 # Array like string with all binary paths to test
 # Posix workaround for missing arrays. Separate command lines by '|'
@@ -292,10 +293,11 @@ log_file_stderr=""
 # Global variables for remote TFTP upload of config and log files
 # - remote_host: remote host/IP where the config files will be sent
 #   + [-host|--remote-host]: override in-script value by command line args
-#   + Default: without -host option, script will only backup locally, like when using -u option
+#   + Default: if not configured, script will only backup locally, like when using -u option
 #   + Note: if set here, we can disable uploading by calling script with '-host ""' option
 # - remote_host_dir: can be set here or you can append it to remote_host in command line arguments (-host remote_host/remote_dir)
-#   + NOTE: if set here, it is not overridden by command line arguments and will be appended to any remote_host/remote_dir path set by command line
+#   + NOTE: if set here, it is not overridden by command line arguments
+#           and will be appended to any remote_host/remote_dir path set by command line
 # - remote_port: set the default remote server listening port
 #   + [-p|--port]: override in-script value by command line args
 # - remote_target_path: $remote_host/$remote_host_dir/
@@ -310,11 +312,13 @@ remote_target_path=""
 # - If $upload_only is true, the options will be ignored
 # - openssl_crypt [-ssl|--ssl-encryption]:
 #   + generate an encrypted openssl backup file
-#   + default is compatible with native pfsense encryption
+#   + if $openssl_iter is left empty, use default openssl iter count
+#     which is compatible with native pfsense encryption
 # - openssl_iter [-iter|--iterations-count]: an integer
 #   + pbkdf2 iterations: start with 300000 and increase depending on your CPU speed
 #   + significant only if openssl_crypt is true
-#   + set to empty string for default openssl pbkdf2 iteration count, currently of 10000 as per source code (too low, security wise)
+#   + set to empty string for default openssl pbkdf2 iteration count,
+#     currently of 10000 as per source code (too low, security wise)
 #   + !!! changing this will break native pfsense import of the xml encrypted file !!!
 # - rar_crypt [-rar|--rar-encryption]:
 #   + generate a rar encrypted config file
@@ -359,6 +363,9 @@ backup_only="false"
 # - used to exit on a command error after calling show_error() function
 # - only modified by show_error() function
 error_exit=0
+
+# On trap EXIT/INT, do not wipe_tmp_logs() unless we created the temp files
+wipe_tmp_logs_on_exit="false"
 
 # Config and log files are tagged with current date
 curr_date=""
@@ -772,6 +779,12 @@ send_logs() {
     echo ""
     echo "> Uplaoding log files to remote server"
     for file in "$log_path"/*; do
+        # If it is a current temp log file and of pipe type, skip it
+        # Since tmp log files are unique, warning on old tmp log files is preserved
+        if [ "$file" = "$pfout_fifo" ] || [ "$file" = "$pferr_fifo" ]; then
+            [ -p "$file" ] && continue
+        fi
+
         # If it is not a file, skip it
         if [ ! -f "$file" ]; then
             show_error 0 "WARNING: skipped not file entry: $file"
@@ -953,6 +966,20 @@ extract_tar() {
     command_status=$?
     [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR: failed extracting $input_file"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
+}
+
+wipe_tmp_logs() {
+    echo ""
+    echo "---Deleting temp log files---"
+
+    # check if current temp log file exists and is a pipe
+    [ -p "$pfout_fifo" ] && $rm -v "$pfout_fifo"
+    [ -p "$pferr_fifo" ] && $rm -v "$pferr_fifo"
+}
+
+clean_tempfiles() {
+    # [ "$wipe_tmp_data_on_exit" = "true" ] && wipe_tmp_data
+    [ "$wipe_tmp_logs_on_exit" = "true" ] && wipe_tmp_logs
 }
 
 # Check the password if encryption is set
@@ -1357,6 +1384,7 @@ parseArguments() {
 printVersion() {
     echo ""
     echo "$script_name version $version"
+    echo "https://github.com/PhilZ-cwm6/truenas_scripts"
     echo "usage: $script_name.sh [-options] [target_mount_point] [filecheck_mount_point]"
     echo "- target_mount_point   : target dataset/directory for the local pfsense backup"
     echo "- filecheck_mount_point: file/dir in 'target_mount_point' to ensure that the target is properly mounted"
@@ -1365,7 +1393,7 @@ printVersion() {
     echo "            [-host|--remote-host][-p|--port][-u|--upload-only][-b|--backup-only|--no-upload]"
     echo "            [-?|-help]"
     echo "- Decrypt : [-d|--decrypt][-in|--input-file][-out|--out-dir][encryption option]"
-    echo "- Defaults: backup using $default_encryption encryption to in-script path $target_mount_point"
+    echo "- Defaults: backup using 'default_encryption' to in-script path 'target_mount_point'"
 }
 
 # Parse script arguments
@@ -1387,14 +1415,48 @@ fi
 setBackupPaths "$@" || show_error $? "ERROR setting backup and log paths"
 [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
+# Trap to cleanup temp files before main function
+# - Called on signal EXIT, or indirectly on INT QUIT TERM
+sig_clean_exit() {
+    # save the return code of the script
+    err=$?
+
+    # reset trap for all signals to not interrupt clean_tempfiles() on any next signal
+    trap '' EXIT INT QUIT TERM
+
+    clean_tempfiles
+    exit $err # exit the script with saved $?
+}
+
+# - Called on signals INT QUIT TERM
+sig_clean_int() {
+    # save error code (130 for SIGINT, 143 for SIGTERM, 131 for SIGQUIT)
+    err=$?
+
+    # some shells will call EXIT after the INT signal
+    # causing EXIT trap to be executed, so we trap EXIT after INT
+    trap '' EXIT 
+
+    (exit $err) # execute in a subshell just to pass $? to sig_clean_exit()
+
+    show_error 0 "WARNING: Script interrupted by signal $(( err - 128 )) "
+    sig_clean_exit
+}
+
+# - Set the signal traps
+trap sig_clean_exit EXIT
+trap sig_clean_int INT QUIT TERM
+
 # Start script main function for backup of config files
 # - we redirect stdout to $log_file AND terminal
 # - we redirect stderr to $log_file_stderr, $log_file AND terminal
 # - terminal and $log_file have both stdout and stderr, while $log_file_stderr only holds stderr
 #
-# POSIX sh doesn't support bash like process substitution. Instead:
-# - mkfifo: we create temporary fifo files for stdout and stderr in $log_path (or /tmp if $log_path is empty string)
-# - trap: on exit or sigterm (Ctrl^C...) of script, always delete the FIFO files (use TRAP so if script crashes, fifo files are still deleted)
+# POSIX sh doesn't support bash like process substitution.
+# On Bash, with process substitution we can no longer properly trap termination signals on subprocesses
+# Instead:
+# - mkfifo: we create temporary fifo files for stdout and stderr in $log_path
+# - trap: on exit or sigterm (Ctrl^C...) of script, always delete the fifo files
 # - main "$@" >"$pfout_fifo" 2>"$pferr_fifo" : redirect main() stdout and stderr to their respective fifo files
 # - tee -a "$log_file_stderr" < "$pferr_fifo" >>"$pfout_fifo":
 #   + $pferr_fifo is redirected to both $pfout_fifo in append mode (>>"$pfout_fifo")
@@ -1408,18 +1470,30 @@ setBackupPaths "$@" || show_error $? "ERROR setting backup and log paths"
 # - & : run each command line in parallel
 #
 # Notes:
-# - after an 'mv -v $log_file', the pfout_fifo will be redirected to the new moved file !
-# - so, instead we copy the $log_file to a new file, we empty it, and next script stdout will be written to the empty $log_file
-# - we then upload the $log_file copy, we remove the copy, and on next script run, the $log_file will be uploaded with its remaining data
-pfout_fifo="${log_path:-/tmp}/pfout_fifo.$$"
-pferr_fifo="${log_path:-/tmp}/pferr_fifo.$$"
-
-echo "DEBUG: pfout_fifo=$pfout_fifo - pferr_fifo=$pferr_fifo"
-mkfifo "$pfout_fifo" "$pferr_fifo" || show_error $? "ERROR creating fifo files" "- pfout_fifo=$pfout_fifo" "- pferr_fifo=$pferr_fifo"
+# - after an 'mv -v $log_file', the pfout_fifo would be redirected to the new moved file !
+# - so, instead we copy the $log_file to a new file, we empty it,
+#   and next script stdout will be written to the empty $log_file
+# - we then upload the $log_file copy, we remove the copy, and on next script run,
+#   the $log_file will be uploaded with its remaining data
+tmp_logs_dir="$log_path"
+[ -d "$tmp_logs_dir" ] || show_error 1 "ERROR: Internal error: tmp_logs_dir=$tmp_logs_dir not found !!"
 [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-trap '$rm "$pfout_fifo" "$pferr_fifo"' INT EXIT
+pfout_fifo="$tmp_logs_dir/pfout_fifo.$$"
+pferr_fifo="$tmp_logs_dir/pferr_fifo.$$"
 
+echo "DEBUG: pfout_fifo=$pfout_fifo - pferr_fifo=$pferr_fifo"
+echo ""
+
+# Temp log files will be created after this.
+# On early script interruption, the trap should clean up the temp log files
+# Note: the cleaning will not be logged if called by the trap
+wipe_tmp_logs_on_exit="true"
+
+mkfifo "$pfout_fifo" "$pferr_fifo" || show_error $? "ERROR creating tmp log fifo files" "- pfout_fifo=$pfout_fifo" "- pferr_fifo=$pferr_fifo"
+[ "$error_exit" -eq 0 ] || exit "$error_exit"
+
+# Start main function with proper logging
 $tee -a "$log_file" < "$pfout_fifo" &
     $tee -a "$log_file_stderr" < "$pferr_fifo" >>"$pfout_fifo" &
     main "$@" >"$pfout_fifo" 2>"$pferr_fifo"; exit
