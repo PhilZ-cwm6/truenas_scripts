@@ -15,23 +15,23 @@
 # Exit on unset variables (-u), return error if any command fails in a pipe (-o pipefail)
 # -f: we need globbing in the "for file in" curl loop
 # -e: we do not want to exit on each error, because errors are managed in script and logged
-# with -u: check if an arg is set using [ -n "${2:-}" ], that is expand to empty string if $2 is unset
+# with -u: to check if an arg is set we must use [ -n "${2:-}" ], that is expand to empty string if $2 is unset
 set -u -o pipefail
 
 # Script version
-version=1.3.8
-
-## pfsense_send_config.sh
-#### !!! This script runs in the pfsense Server under root and sh POSIX shell !!!
+version=1.4.0
 
 : <<'README.MD'
-### FUNCTIONS:
+## pfsense_send_config.sh
+!!! This script runs in the pfsense Server under root and sh POSIX shell !!!
+
+### FUNCTIONS
 - Backup pfsense config file and optionally send it to a remote TFTP server
   + config files are encrypted in openssl with a pfsense compatible format that can be restored from the GUI
   + config files can also be encrypted using rar, gpg or stored as non encrypted tar
 - Decrypt/Extract an openssl, rar, gpg or tar config file
 
-### SYNOPSIS:
+### SYNOPSIS
 - Backups are performed and encrypted on the pfsense server
 - The backups and logs are stored locally on the pfsense server
 - The default storage locations for backup and log files are respectively `$target_mount_point/pfsense_send_config` and `$target_mount_point/logs` directories
@@ -57,14 +57,21 @@ version=1.3.8
 - using wget/ssh from a remote server to access backup/restore function in the firewall, would expose a pfsense admin priviledged user/password on a remote server
 - more options like using scp to ssh into a remote host, or curl sftp are left to the user developement if needed
 
-- Decrypting backup files is done with the `-d|--decrypt` option, associated with -in option
-- Optional decrypting options are -out (output directory) and any input file format option (-ssl|-rar|-gpg|-tar)
+- Decrypting backup files is done with the `-d|--decrypt` option, associated with `-in|--input-file` option
+- Optional decrypting options are `-out|--out-dir` (output directory) and any input file format option `-ssl|-rar|-gpg|-tar`
 - See below examples for how to decrypt
+
+- A password file containing the encryption/decryption password must be used
+- Empty passwords are not allowed
+- Default password file is `script_path/script_basename.pass`
+- Password file can be set to a different location either in script using `$pass_file` variable or using `-pf|--passfile` option
+- Script doesn't support providing password from the command line for security reasons
+- Prompt for password is not supported so that script can always be started from a cron job
 
 ### SYNTAX
     script_name.sh [-options][Positional params]
 
-### USAGE
+#### USAGE
     script_name.sh [-options] [target_mount_point] [filecheck_mount_point]
 
 #### Positional Parameters
@@ -80,13 +87,14 @@ version=1.3.8
 
 #### Options
     [-ssl|--ssl-encryption][-rar|--rar-encryption][-gpg|--gpg-encryption]
-    [-tar|--unencrypted-tar][-iter|--iterations-count]
-    [-?|-help]
+    [-tar|--unencrypted-tar][-iter|--iterations-count][-pf|--passfile]
+    [-?|--help]
 
-#### Decrypt options:
-    [-d|--decrypt][-in|--input-file][-out|--out-dir][one encryption option][-iter|--iterations-count]
+#### Decrypt options
+    [-d|--decrypt][-in|--input-file][-out|--out-dir]
+    [file format option][-iter|--iterations-count][-pf|--passfile]
 
-#### Upload options:
+#### Upload options
     [-host|--remote-host][-p|--port][-u|--upload-only][-b|--backup-only|--no-upload]
 
 #### Options details
@@ -94,14 +102,18 @@ version=1.3.8
     -rar|--rar-encryption    : generate a RAR5 AES256 encrypted backup. You must install rar binary
     -gpg|--gpg-encryption    : generate a GnuPG AES256 encrypted backup (GPG)
     -tar|--unencrypted-tar   : generate a tar file with no encryption, strongly not recommended.
-                               Will generate a warning to stderr
+                               will generate a warning to stderr
     -iter|--iterations-count : set a custom iterations count, overrides `$openssl_iter` variable
                                by default, if not set by options and `$openssl_iter` is kept as empty string in script,
-                               it will use default openssl value, compatible with pfsense GUI encryption
+                               it will use default openssl value
+                               by default, it is compatible with pfsense GUI encryption
+    -pf|--passfile           : path to a file containing the password for backup or decryption
+                               will override `$pass_file` variable in script
+                               if not set either in script neither by command option, it will default to `script_path/script_basename.pass`
     -d|--decrypt             : decrypt mode
     -in|--input-file         : file to decrypt
     -out|--out-dir           : directory where uncrypted files will be extracted.
-                               if omitted, extracts to a `config.NNNN` directory created in local folder
+                               if omitted, extracts to a `config.NNNN` directory created in local directory
     -host|--remote-host      : the remote tftp server to which files are sent. Overrides `$remote_host` variable
     -p|--port                : the remote tftp server port. Overrides `$remote_port` variable
     -u|--upload-only         : only upload previous backup and log files without creating a new backup
@@ -110,7 +122,7 @@ version=1.3.8
 - if no encryption option is specified, use default encryption set in variable `$default_encryption`
 - if no remote host is specified by command line and `$remote_port` variable is empty, equivalent to `--backup-only`
 
-### INSTALLATION:
+### INSTALLATION
 - SSH into pfsense
 ```
 mkdir /root/scripts
@@ -136,15 +148,16 @@ ee /root/scripts/pfsense_send_config.pass
 
 ### EXAMPLES:
 - Exp 1: `pfsense_send_config.sh`
-    - will save the config file in openssl encrypted format and store it in local folder '$target_mount_point/pfsense_send_config'
+    - will save the config file in openssl encrypted format and store it in local directory '$target_mount_point/pfsense_send_config'
     - the encrypted xml is compatible with restore from pfsense GUI
     - '$target_mount_point' and '$filecheck_mount_point' variables must be set in script
-    - default is '/root/pfsense_send_config' and the folder '/root/scripts' must exist
+    - default is '/root/pfsense_send_config' and the directory '/root/scripts' must exist
     - if remote_host and remote_port variables are specified in script, it will move backups and logs to the specified TFTP server
 
-- Exp 2: `pfsense_send_config.sh -host truenas.local -rar -gpg -ssl -tar`
+- Exp 2: `pfsense_send_config.sh -host truenas.local -rar -gpg -ssl -tar -p /pool/data/home/user/my_passfile.pass`
     - will save the config files in pfsense compatible xml encrypted openssl format, and also to rar, gpg and tar formats
     - config and log files are then moved to the tftp server `truenas.local` on default port 69
+    - read password from file `/pool/data/home/user/my_passfile.pass`
 
 - Exp 3: `pfsense_send_config.sh -host 192.168.30.30/config -p 750`
     - will save the config file as a pfsense compatible openssl encrypted file
@@ -158,18 +171,20 @@ ee /root/scripts/pfsense_send_config.pass
     - suppose we want to save the backups and logs on an USB key mounted in pfsense under the directory /mnt/media/usb_key
     - this command will save the config files as both an encrypted xml and rar format
     - the encrypted ssl file will have 900000 iterations (you cannot restore it using pfsense GUI)
-    - script will check for the existance of a file or directory named /mnt/media/usb_key/.pfsense.key to ensure the target path is mounted
-    - the config files will be saved to local folder /mnt/media/usb_key/pfsense_send_config
-    - the log files will be saved to /mnt/media/usb_key/logs
+    - script will check for the existance of a file or directory named `/mnt/media/usb_key/.pfsense.key` to ensure the target path is mounted
+    - the config files will be saved to local directory `/mnt/media/usb_key/pfsense_send_config`
+    - the log files will be saved to `/mnt/media/usb_key/logs`
     - config and log files will be moved to the tftp server `192.168.30.30` on defaukt port 69
 
-- Exp 6: `pfsense_send_config.sh -d -in encrypted-file.xml -iter 500000`
+- Exp 6: `pfsense_send_config.sh -d -in encrypted-file.xml -iter 500000 -p /pool/data/home/user/my_passfile.pass`
     - decrypt the 'encrypted-file.xml', assuming default ssl format but with a custom 500000 iterations count
     - output file is created in local directory under a subdirectory named 'config.NNNN'
+    - read password from file `/pool/data/home/user/my_passfile.pass`
 
 - Exp 7: `pfsense_send_config.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config`
-    - decrypt the rar 'encrypted-config.rar' file and output to the directory /home/admin/config
+    - decrypt the rar 'encrypted-config.rar' file and output to the directory `/home/admin/config`
 README.MD
+
 
 #  ** Editable paths: >>XXXX <<XXXX **
 #***************************************
@@ -198,28 +213,12 @@ log_file_name="$backup_dir_name.log" # holds stdout and stderr
 log_file_name_stderr="__ERROR__$log_file_name" # only stderr
 # <<XXXX
 
-# Script path and file name: used for password file name
-script_path=$(dirname "$0")
-script_name=$(basename "$0")
-
-# Backup Password file path: the path for a the file containing the password for the target backup when using encryption
-# - the password file is in the same folder as this script file
-# - the password file name: same as the script file name, with last extension replaced by .pass
-# - Edit only if password file name or path needs to be changed
+# Paths where rar and gpg optional commands are installed
+# - do not add these to $binary_paths because they are optional, and checked on use
 # >>XXXX
-pass_file_path="$script_path"
-pass_file_name="${script_name%.*}.pass" # scriptname.sh becomes scriptname
-# <<XXXX
-pass_file="$pass_file_path/$pass_file_name"
-
-# Paths where rar command is installed
-# >>XXXX
-rar="/root/bin/rar"
 #rar="/usr/local/bin/rar"
-# <<XXXX
-
-# Path where gpg command is installed
-# >>XXXX
+rar="/root/bin/rar"
+#rar="/home/admin/bin/rar"
 gpg="/usr/local/bin/gpg"
 # <<XXXX
 
@@ -246,10 +245,15 @@ rm="/bin/rm"
 mv="/bin/mv"
 tee="/usr/bin/tee"
 #cut="/usr/bin/cut"
+dirname="/usr/bin/dirname"
+basename="/usr/bin/basename"
+cat="/bin/cat"
+#hostname="/bin/hostname"
+#ls="/bin/ls"
 
 # Array like string with all binary paths to test
 # Posix workaround for missing arrays. Separate command lines by '|'
-binary_paths="$openssl|$grep|$nmap|$mkdir|$sed|$chown|$chmod|$touch|$sleep|$curl|$tar|$perl|$tr|$cp|$rm|$mv|$tee"
+binary_paths="$openssl|$grep|$nmap|$mkdir|$sed|$chown|$chmod|$touch|$sleep|$curl|$tar|$perl|$tr|$cp|$rm|$mv|$tee|$dirname|$basename|$cat"
 binary_paths_delimiter="|"
 # <<XXXX
 
@@ -273,6 +277,16 @@ nmap_retry=30 # 30 times (x30 sec = 15 mn)
 # >>XXXX
 openssl_iter=""
 default_encryption="ssl" # allowed values: ssl,rar,gpg,tar
+# <<XXXX
+
+# Backup Password file path: the path for a file containing the password when using encryption
+# - can be overriden by [-pf|--passfile] option
+# - if not set here or by command option, it will default to : 
+#   + a password file in the same directory as this script file
+#   + with same file name as the script file name
+#   + but with last extension replaced by .pass
+# >>XXXX
+pass_file=""
 # <<XXXX
 
 
@@ -406,7 +420,7 @@ setBackupPaths() {
     # - ensure the target mount point is properly mounted before creating any files on the target
     if [ ! -f "$target_mount_point/$filecheck_mount_point" ] && [ ! -d "$target_mount_point/$filecheck_mount_point" ]; then
         show_error 1 "ERROR: TARGET DIRECTORY NOT MOUNTED" \
-            "ensure the directory is properly mounted and the below file/dir exists at its root:" \
+            "Ensure the target directory is mounted and the below file/dir exists at its root:" \
             "$target_mount_point/$filecheck_mount_point"
         exit 1
     fi
@@ -414,7 +428,7 @@ setBackupPaths() {
     # - ensure the target directory is writable
     if [ ! -w "$target_mount_point" ]; then
         show_error 1 "ERROR: TARGET DIRECTORY NOT WRITABLE" \
-            "ensure the directory is properly mounted and writable by current user:" \
+            "Ensure the target directory is properly mounted and writable by current user:" \
             "$target_mount_point"
         exit 1
     fi
@@ -510,7 +524,7 @@ save_config() {
     target_tar="$target_dir/config-pfSense.intranet-$curr_date.tar"
 
     # Check if source file to backup exists and can be read
-    if ! [ -f "$source_file" ] || ! [ -r "$source_file" ]; then
+    if [ ! -f "$source_file" ] || [ ! -r "$source_file" ]; then
         show_error 1 "ERROR: Cannot find/read config file: $source_file"
         exit 1
     fi
@@ -522,7 +536,7 @@ save_config() {
 
     [ "$openssl_crypt" != "true" ] && [ "$rar_crypt" != "true" ] \
         && [ "$gpg_crypt" != "true" ] && [ "$tar_no_crypt" != "true" ] \
-        && show_error 1 "ERROR: Internal ERROR: save_config(): No output format provided !"
+        && show_error 1 "ERROR: Internal Error" "save_config(): No output format provided !"
 
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
@@ -545,7 +559,7 @@ save_openssl() {
     # - case iter_count is empty string: use default openssl command iterations count
     if [ -n "$openssl_iter" ]; then
         # ensure the specified iter count is an integer
-        is_integer "$openssl_iter" || show_error 1 "ERROR: iteration count invalid option: $openssl_iter"
+        is_unsigned_integer "$openssl_iter" || show_error 1 "ERROR: iteration count invalid option: $openssl_iter"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
 
@@ -556,12 +570,15 @@ save_openssl() {
     #   it allows the unquoted empty default value without error, while the non empty $openssl_iter is quoted
     #   https://github.com/koalaman/shellcheck/wiki/SC2086
     # - Note: do not double quote perl argument and keep the single unexpandable quotes
-    $openssl enc -e -aes-256-cbc -salt -md sha256 -pbkdf2 ${openssl_iter:+-iter} ${openssl_iter:+"$openssl_iter"} -in "$source_file" -pass file:"$pass_file" | $openssl base64 | $tr -d '\n' | $perl -0xff -pe 's/(.{64})/$1\n/sg' > "$target_ssl"
+    $openssl enc -e -aes-256-cbc -salt -md sha256 -pbkdf2 ${openssl_iter:+-iter} ${openssl_iter:+"$openssl_iter"} -in "$source_file" -pass file:"$pass_file" | \
+        $openssl base64 | \
+        $tr -d '\n' | \
+        $perl -0xff -pe 's/(.{64})/$1\n/sg' > "$target_ssl"
     command_status=$?
     [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR encrypting config file: $target_ssl"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-    echo '---- BEGIN config.xml ----' | cat - "$target_ssl" > "$target_dir/tmp_xml" && $mv "$target_dir/tmp_xml" "$target_ssl"
+    echo '---- BEGIN config.xml ----' | $cat - "$target_ssl" > "$target_dir/tmp_xml" && $mv "$target_dir/tmp_xml" "$target_ssl"
     command_status=$?
     [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR adding header to encrypted config file: $target_ssl"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
@@ -587,7 +604,11 @@ save_rar() {
     password=""
     get_password
 
-    $rar a -ow -@ -rr10 -s- -ep -m3 -ma -p"$password" "$target_rar" "$source_file" | $sed -e 's/     .*OK/ OK/' -e 's/     .*100%/ 100%/'
+    $rar a -ow -@ -rr10 -s- -ep -m3 -ma -p"$password" "$target_rar" "$source_file" | \
+        $sed -e 's/     .*OK/ OK/' -e 's/     .*100%/ 100%/'
+          # we run two replace script iterations on the same command "-e", first to keep the last OK and second to keep the last 100%
+          # do not use -ow to preserve ownership, since we're piping the input from tar and the rar will not find the input tar file
+
     command_status=$?
     [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR creating rar encrypted backup: $target_rar"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
@@ -611,10 +632,11 @@ save_gpg() {
 
     # Encrypted GnuPG tarball
     source_dir=$(dirname "$source_file")
-    source_file_name=$(basename "$source_file")
-    $tar -cf - -C "$source_dir" "$source_file_name" \
-        | $gpg --cipher-algo aes256 --pinentry-mode loopback --passphrase-file "$pass_file" -o "$target_gpg" --symmetric
-          # [--pinentry-mode loopback] : needed in new gpg for supplying unencryped passwords on command line. Else, we get the error "problem with the agent: Invalid IPC response"
+    source_file_name=$($basename "$source_file")
+    $tar -cf - \
+        -C "$source_dir" "$source_file_name" | \
+        $gpg --cipher-algo aes256 --pinentry-mode loopback --passphrase-file "$pass_file" -o "$target_gpg" --symmetric
+        # [--pinentry-mode loopback] : needed in new gpg for supplying unencryped passwords on command line. Else, we get the error "problem with the agent: Invalid IPC response"
 
     command_status=$?
     [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR creating gpg encrypted backup: $target_gpg"
@@ -626,7 +648,7 @@ save_gpg() {
 # TAR non-encrypted backup file
 save_decrypted() {
     echo ""
-    echo "> Non-encrypted backup to $target_dir"
+    echo "> TAR non-encrypted backup to $target_dir"
 
     # Print warning to stderr
     show_error 0 "- WARNING: backup using no encryption..."
@@ -636,7 +658,7 @@ save_decrypted() {
     # unlike some installers where tar only outputs archive to stdout if we specify '-' as filename or no "-f filename"
     # do not use verbose (tar -cvf), else stderr gets populated with filenames and cron job sends an error
     source_dir=$(dirname "$source_file")
-    source_file_name=$(basename "$source_file")
+    source_file_name=$($basename "$source_file")
     $tar -cf "$target_tar" -C "$source_dir" "$source_file_name"
 
     command_status=$?
@@ -653,8 +675,8 @@ send_config() {
     echo "> Waiting for remote TFTP server to be online"
 
     # Validate args
-    [ -z "$remote_host" ] && show_error 1 "ERROR: Internal error: send_config() called with no remote_host"
-    is_integer "$remote_port" || show_error 1 "ERROR: No valid TFTP server port found:  port=$remote_port"
+    [ -z "$remote_host" ] && show_error 1 "ERROR: Internal Error" "send_config() called with no remote_host"
+    is_unsigned_integer "$remote_port" || show_error 1 "ERROR: No valid TFTP server port found:  port=$remote_port"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # We wait for the TFTP server to be online using nmap, before trying an upload using curl
@@ -709,7 +731,7 @@ send_config() {
         # Delete the local file if upload was successful
         case "$file" in
             *".xml"|*".rar"|*".gpg"|*".tar")
-                echo "- Uploading file: $(basename "$file")"
+                echo "- Uploading file: $($basename "$file")"
                 $curl \
                     --no-progress-meter \
                     --connect-timeout "$curl_conn_timeout" \
@@ -747,8 +769,8 @@ send_logs() {
     echo "---Uploading log files to remote server---"
 
     # Validate args
-    [ -z "$remote_host" ] && show_error 1 "ERROR: Internal error: send_logs() called with no remote_host"
-    is_integer "$remote_port" || show_error 1 "ERROR: Internal error: send_logs() called with inavlid port num: $remote_port"
+    [ -z "$remote_host" ] && show_error 1 "ERROR: Internal Error" "send_logs() called with no remote_host"
+    is_unsigned_integer "$remote_port" || show_error 1 "ERROR: Internal Error" "send_logs() called with inavlid port num: $remote_port"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     echo "> Renaming current log files"
@@ -795,7 +817,7 @@ send_logs() {
         # then, delete the local files if upload was successful
         case "$file" in
             *".$log_file_name"|*".$log_file_name_stderr")
-                echo "- Uploading log file: $(basename "$file")"
+                echo "- Uploading log file: $($basename "$file")"
                 $curl \
                     --no-progress-meter \
                     --connect-timeout 10 \
@@ -836,10 +858,10 @@ decrypt_config() {
     echo "> Input file: $input_file"
 
     # Check decryption options
-    [ "$decrypt_mode" != "true" ] && show_error 1 "INTERNAL ERROR: decrypt_config(): decrypt_mode=$decrypt_mode"
+    [ "$decrypt_mode" != "true" ] && show_error 1 "ERROR: Internal Error" "decrypt_config(): decrypt_mode=$decrypt_mode"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-    [ -z "$input_file" ] && show_error 1 "INTERNAL ERROR: decrypt_config(): empty input_file"
+    [ -z "$input_file" ] && show_error 1 "ERROR: Internal Error" "decrypt_config(): empty input_file"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # Check that there are no multiple decryption formats set to true (in script edits)
@@ -848,10 +870,10 @@ decrypt_config() {
     [ "$rar_crypt" = "true" ] && count=$((count + 1))
     [ "$gpg_crypt" = "true" ] && count=$((count + 1))
     [ "$tar_no_crypt" = "true" ] && count=$((count + 1))
-    [ $count -ne 1 ] && show_error 1 "ERROR: Internal error: decrypt_config(): $count encryption formats specified"
+    [ $count -ne 1 ] && show_error 1 "ERROR: Internal Error" "decrypt_config(): $count encryption formats specified"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-    if [ ! -f "$input_file" ] || ! [ -r "$input_file" ]; then 
+    if [ ! -f "$input_file" ] || [ ! -r "$input_file" ]; then 
         show_error 1 "ERROR: Cannot find/read input file: $input_file"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
@@ -872,12 +894,12 @@ decrypt_config() {
     elif [ "$rar_crypt" = "true" ]; then extract_rar
     elif [ "$gpg_crypt" = "true" ]; then extract_gpg
     elif [ "$tar_no_crypt" = "true" ]; then extract_tar
-    else show_error 1 "ERROR: Internal error: decrypt_config(): input file format not specified"
+    else show_error 1 "ERROR: Internal Error" "decrypt_config(): input file format not specified"
     fi
 
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
     
-    echo "> Config file decrypted in $out_path"
+    echo "> Config file extracted to $out_path"
     echo ""
 }
 
@@ -894,14 +916,16 @@ extract_openssl() {
     # - case iter_count is empty string: use default openssl command iterations count
     if [ -n "$openssl_iter" ]; then
         # ensure the specified iter count is an integer
-        is_integer "$openssl_iter" || show_error 1 "ERROR: iteration count invalid option: $openssl_iter"
+        is_unsigned_integer "$openssl_iter" || show_error 1 "ERROR: iteration count invalid option: $openssl_iter"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
 
     # Decrypt config file
-    outfile=$(basename "$input_file")
-    out_path="${out_path%/}"  # remove trailing /
-    $grep -v "config.xml" "$input_file" | $openssl base64 -d | $openssl enc -d -aes-256-cbc -salt -md sha256 -pbkdf2 ${openssl_iter:+-iter} ${openssl_iter:+"$openssl_iter"} -out "$out_path/$outfile" -pass file:"$pass_file"
+    outfile=$($basename "$input_file")
+    out_path="${out_path%/}" # remove trailing /
+    $grep -v "config.xml" "$input_file" | \
+        $openssl base64 -d | \
+        $openssl enc -d -aes-256-cbc -salt -md sha256 -pbkdf2 ${openssl_iter:+-iter} ${openssl_iter:+"$openssl_iter"} -out "$out_path/$outfile" -pass file:"$pass_file"
     command_status=$?
     [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR: failed decrypting $input_file"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
@@ -921,9 +945,7 @@ extract_rar() {
     get_password
 
     # Decrypt config file
-    # - rar p: extract file to stdout
-    # - -inul: do not print any message to stdout (only file is printed to stdout with 'p' command)
-    out_path="${out_path%/}"  # remove trailing /
+    out_path="${out_path%/}" # remove trailing /
     $rar x -p"$password" "$input_file" "$out_path/"
 
     command_status=$?
@@ -984,16 +1006,25 @@ clean_tempfiles() {
 
 # Check the password if encryption is set
 get_password() {
+    # If password file is not set in script or by -pf|--passfile option,
+    # then default to /script_path/script_basename.pass
+    if [ -z "$pass_file" ]; then
+        script_path=$($dirname "$0")
+        script_name=$($basename "$0")
+        pass_file_name="${script_name%.*}.pass" # scriptname.sh becomes scriptname
+        pass_file="$script_path/$pass_file_name"
+    fi
+
     #password=$(<"$pass_file") # bash only
-    password=$(cat "$pass_file")
-    [ -z "$password" ] && show_error 1 "ERROR: no password was set" "you must specify a password in $pass_file"
+    password=$($cat "$pass_file")
+    [ -z "$password" ] && show_error 1 "ERROR: no password was set" "you must specify a password in $pass_file" "Or you can set the passfile path using -pf|--passfile option"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 }
 
 # Check if a received arg is an integer (exclude -/+ signs)
-is_integer() {
+is_unsigned_integer() {
     command_status=1
-    [ $# -ne 1 ] && show_error 1 "ERROR: Internal error: is_integer() needs one argument"
+    [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_unsigned_integer() needs one argument"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # Bash only
@@ -1014,6 +1045,32 @@ is_integer() {
     esac
 }
 
+: <<'COMMENTED_CODE'
+# Check if a received arg is a signed integer (include -/+ leading signs)
+is_signed_integer() {
+    command_status=1
+    [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_signed_integer() needs one argument"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
+
+    # Bash only
+    #[[ "$1" =~ ^[+-]?[0-9]+$ ]] && command_status=0 # is a signed integer
+    #return "$command_status"
+
+    # Posix compatible
+    case ${1#[-+]} in
+        *[!0-9]*|'')
+            # Not a signed integer
+            return "$command_status"
+            ;;
+        *)
+            # is a valid signed integer
+            command_status=0
+            return "$command_status"
+            ;;
+    esac
+}
+COMMENTED_CODE
+
 # Log passed args to stderr and preserve error code from caller
 # - call syntax: show_error $? "error msg 1" "error message 2"...
 # - after function call, use this line of code: [ "$error_exit" -eq 0 ] || exit "$error_exit"
@@ -1021,28 +1078,19 @@ is_integer() {
 # - we do not exit here else stderr gets flushed after the command prompt display
 show_error() {
     # $1 must be an integer value because it is used as a return/exit code
-    error_exit="$1"
-    curr_date=$(date)
+    error_time=$(date)
 
-    # Bash option:
-    # if ! [[ "$error_exit" =~ ^[0-9]+$ ]]; then echo "ERROR: Not an integer"; done
+    if ! is_unsigned_integer "$1"; then
+        {
+            echo "INTERNAL ERROR IN FUNCTION show_error()"
+            echo "function arg1=$1"
+            echo "expected: integer value for arg1"
 
-    # Posix sh:
-    case ${error_exit#[-+]} in
-        *[!0-9]*|'')
-            {
-                echo "INTERNAL ERROR IN FUNCTION show_error()"
-                echo "function arg1=$1"
-                echo "expected: integer value for arg1"
-
-                printf "!!!! %s !!!!\n" "$curr_date"
-                echo ""
-            } >&2
-            exit 1 # fatal error, exit
-            ;;
-#       *)
-#           echo it is a number;;
-    esac
+            printf "!!!! %s !!!!\n" "$error_time"
+            echo ""
+        } >&2
+        exit 1 # fatal error, exit
+    fi
 
     # Ensure the function is called with at least two args and that there is an error message to display
     if [ "$#" -lt  2 ] || [ -z "$2" ]; then
@@ -1051,11 +1099,14 @@ show_error() {
             echo "function arg2 not found or empty string"
             echo "expected arg2 to be a string with error message"
 
-            printf "!!!! %s !!!!\n" "$curr_date"
+            printf "!!!! %s !!!!\n" "$error_time"
             echo ""
         } >&2
         exit 1 # fatal error, exit
     fi
+
+    # Set error exit
+    error_exit="$1"
 
     # Print to stderr each arg (error message) in a separate line
     shift # $1 is now the first error message
@@ -1064,7 +1115,7 @@ show_error() {
             echo "$error_msg"
         done
 
-        printf "!!!! %s !!!!\n" "$curr_date"
+        printf "!!!! %s !!!!\n" "$error_time"
         echo ""
     } >&2
 
@@ -1125,10 +1176,14 @@ checkBinaries() {
 parseArguments() {
     # Args class count
     # Used to check if specific encryption options were set while the -d decrypt mode was specified
-    pos_args=0 # positional args count
-    enc_options=0 # encryption args count
-    dec_options=0 # decryption args count
-    host_options=0 # # upload args count
+    pos_args=0      # positional args count
+    enc_options=0   # encryption args count
+    dec_options=0   # decryption args count
+    iter_arg=0      # -iter|--iterations-count options used
+    passfile_arg=0  # -pf|--passfile option used
+    host_options=0  # upload args count
+
+    script_name=$($basename "$0")
 
     # Bash:
     #while (( "$#" )); do
@@ -1163,10 +1218,11 @@ parseArguments() {
             -iter|--iterations-count)
                 # First char of $str: $(printf %.1s "$str")
                 if [ -n "${2:-}" ] && [ "$(printf %.1s "$2")" != "-" ]; then
-                    is_integer "$2" || show_error 1 "ERROR: syntax error" "Iterations count must be a number" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
+                    is_unsigned_integer "$2" || show_error 1 "ERROR: syntax error" "Iterations count must be a number" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
                     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
                     openssl_iter="$2"
+                    iter_arg=1
                     shift 2
                 else
                     show_error 1 "ERROR: Argument for $1 is missing" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
@@ -1200,6 +1256,17 @@ parseArguments() {
                     exit 1
                 fi
                 ;;
+            -pf|--passfile)
+                # First char of $str: $(printf %.1s "$str")
+                if [ -n "${2:-}" ] && [ "$(printf %.1s "$2")" != "-" ]; then
+                    pass_file="$2"
+                    passfile_arg=1
+                    shift 2
+                else
+                    show_error 1 "ERROR: Argument for $1 is missing" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
+                    exit 1
+                fi
+                ;;
             -host|--remote-host)
                 # First char of $str: $(printf %.1s "$str")
                 if [ -n "${2:-}" ] && [ "$(printf %.1s "$2")" != "-" ]; then
@@ -1214,7 +1281,7 @@ parseArguments() {
             -p|--port)
                 # First char of $str: $(printf %.1s "$str")
                 if [ -n "${2:-}" ] && [ "$(printf %.1s "$2")" != "-" ]; then
-                    is_integer "$2" || show_error 1 "ERROR: syntax error" "Port number must be a number" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
+                    is_unsigned_integer "$2" || show_error 1 "ERROR: syntax error" "Port number must be a number" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
                     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
                     remote_port="$2"
@@ -1234,8 +1301,9 @@ parseArguments() {
                 backup_only="true"
                 shift
                 ;;
-            -?|-help)
+            -?|--help)
                 printVersion
+                shift
                 exit
                 ;;
             -*) # Unsupported flags
@@ -1300,7 +1368,7 @@ parseArguments() {
     # - else set a default encryption/decryption format if none is specified
     if [ "$upload_only" = "true" ]; then
         [ -z "$remote_host" ] && show_error 1 "ERROR: syntax error" "No remote host specified" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
-        is_integer "$remote_port" || show_error 1 "ERROR: syntax error" "No valid remote port specified" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
+        is_unsigned_integer "$remote_port" || show_error 1 "ERROR: syntax error" "No valid remote port specified" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ $enc_options -ne 0 ] && show_error 1 "ERROR: syntax error" "Encryption options are not used in upload only mode" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ $dec_options -ne 0 ] && show_error 1 "ERROR: syntax error" "Decryption options are not used in upload only mode" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         # case -iter option is set, just ignore it
@@ -1326,8 +1394,17 @@ parseArguments() {
         enc_options=$((enc_options + 1))
     fi
 
-    # Some useless, non harmful associations in backup/decrypt modes
-    # -iter without -ssl in backup mode: will be ignored
+    # Some useless, non harmful associations in backup/decrypt modes that would be ignored if not checked here
+    # -iter without -ssl in backup mode
+    [ "$iter_arg" -ne 0 ] && [ "$openssl_crypt" != "true" ] && \
+        show_error 1 "ERROR: syntax error" "-iter|--iterations-count option only useful in openssl format" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
+
+    # -pf|--passfile without any encrypted format
+    [ "$passfile_arg" -ne 0 ] && [ "$openssl_crypt" != "true" ] && [ "$rar_crypt" != "true" ] && [ "$gpg_crypt" != "true" ] && \
+        show_error 1 "ERROR: syntax error" "-pf|--passfile option only useful with encrypted formats" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
+    
 
     # Specific encryption/decryption options rules
     if [ $dec_options -ne 0 ]; then
@@ -1339,7 +1416,7 @@ parseArguments() {
         [ -z "$input_file" ] && show_error 1 "ERROR: syntax error: Missing input file to decrypt" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-        # positional args are not allowed
+        # positional args are not used
         [ $pos_args -ne 0 ] && show_error 1 "ERROR: syntax error: Positional arguments cannot be used in decryption mode" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
@@ -1348,7 +1425,7 @@ parseArguments() {
         [ $enc_options -gt 1 ] && show_error 1 "ERROR: syntax error: Only one input format can be specified for decryption" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
-        # uplaod and backup only options has no meaning in decrypt mode
+        # upload and backup only options has no meaning in decrypt mode
         if [ "$upload_only" = "true" ] || [ "$backup_only" = "true" ]; then
             show_error 1 "ERROR: syntax error" "Decryption options are not used in upload/backup only modes" "Usage: $script_name [-options] [target_mount_point] [filecheck_mount_point]"
             exit 1
@@ -1382,6 +1459,8 @@ parseArguments() {
 
 # Print version and syntax
 printVersion() {
+    script_name=$($basename "$0")
+
     echo ""
     echo "$script_name version $version"
     echo "https://github.com/PhilZ-cwm6/truenas_scripts"
@@ -1389,20 +1468,21 @@ printVersion() {
     echo "- target_mount_point   : target dataset/directory for the local pfsense backup"
     echo "- filecheck_mount_point: file/dir in 'target_mount_point' to ensure that the target is properly mounted"
     echo "- Options : [-ssl|--ssl-encryption][-rar|--rar-encryption][-gpg|--gpg-encryption]"
-    echo "            [-tar|--unencrypted-tar][-iter|--iterations-count]"
+    echo "            [-tar|--unencrypted-tar][-iter|--iterations-count][-pf|--passfile]"
     echo "            [-host|--remote-host][-p|--port][-u|--upload-only][-b|--backup-only|--no-upload]"
-    echo "            [-?|-help]"
-    echo "- Decrypt : [-d|--decrypt][-in|--input-file][-out|--out-dir][encryption option]"
+    echo "            [-?|--help]"
+    echo "- Decrypt : [-d|--decrypt][-in|--input-file][-out|--out-dir][file format option]"
+    echo "            [-iter|--iterations-count][-pf|--passfile]"
     echo "- Defaults: backup using 'default_encryption' to in-script path 'target_mount_point'"
 }
-
-# Parse script arguments
-parseArguments "$@" || show_error $? "ERROR parsing script arguments"
-[ "$error_exit" -eq 0 ] || exit "$error_exit"
 
 # Check if all the binary paths are properly set
 # - ! do not quote $binary_paths !
 checkBinaries $binary_paths "$binary_paths_delimiter"
+
+# Parse script arguments
+parseArguments "$@" || show_error $? "ERROR parsing script arguments"
+[ "$error_exit" -eq 0 ] || exit "$error_exit"
 
 # If we are decrypting a config file, no logging or other tasks are processed
 if [ "$decrypt_mode" = "true" ]; then
@@ -1476,7 +1556,7 @@ trap sig_clean_int INT QUIT TERM
 # - we then upload the $log_file copy, we remove the copy, and on next script run,
 #   the $log_file will be uploaded with its remaining data
 tmp_logs_dir="$log_path"
-[ -d "$tmp_logs_dir" ] || show_error 1 "ERROR: Internal error: tmp_logs_dir=$tmp_logs_dir not found !!"
+[ -d "$tmp_logs_dir" ] || show_error 1 "ERROR: Internal Error" "tmp_logs_dir=$tmp_logs_dir not found !!"
 [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
 pfout_fifo="$tmp_logs_dir/pfout_fifo.$$"

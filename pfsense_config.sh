@@ -9,21 +9,21 @@
 # Exit on unset variables (-u), return error if any command fails in a pipe (-o pipefail)
 # -f: we need globbing in the "for file in" curl loop
 # -e: we do not want to exit on each error, because errors are managed in script and logged
-# with -u: check if an arg is set using [ -n "${2:-}" ], that is expand to empty string if $2 is unset
+# with -u: to check if an arg is set we must use [ -n "${2:-}" ], that is expand to empty string if $2 is unset
 set -u -o pipefail
 
 # Script version
-version=1.3.5
+version=1.3.8
 
 : <<'README.MD'
 ## pfsense_config.sh
 
-### FUNCTIONS:
+### FUNCTIONS
 - Start inetd configured TFT server to start listening from remote pfsense script
 - After a default 15mn delay, turn off the TFTP server
 - Move any backup and log files from the TFTP server root to the destination target
 
-### SYNOPSIS:
+### SYNOPSIS
 - Backups are performed and encrypted on the pfsense server using pfsense_send_config.sh script on pfsense
 - The pfsense_send_config.sh script on pfsense server sends the encrypted backups and logs on a schedule to the TrueNAS local TFTP Server
 - This script starts the TFTP server, waits for 15 minutes, then turns off the TFTP Server
@@ -54,7 +54,7 @@ version=1.3.5
 
 #### Options
     [-in|--source-dir]
-    [-?|-help]
+    [-?|--help]
 
 #### Options details
     -in|--source-dir : directory where the remote backup and log files were sent (the tftp root directory)
@@ -64,15 +64,15 @@ version=1.3.5
 
 ### INSTALLATION
 - setup the pfsense_send_config.sh script on pfsense as in the script/readme files
-- create a unix data set `/pool/data/tftp` that will be the root of teh tftp server
+- create a unix data set `/pool/data/tftp` that will be the root of the tftp server
 - create a user:group `tftp:tftp`
 - set `rwx` permissions for both user and group `tftp:tftp` on `/pool/data/tftp`, public permissions should be left unset
 - setupt the TFTP service in TrueNAS GUI, but do not enable "auto-start"
 - the TFTP service root directory should be the unix dataset we created: `/pool/data/tftp`
 - the user `tftp` must be the user specified in the TFTP service
 - optionally, edit the scrip variable `$source_dir` and set it to `/pool/data/tftp`
-- setup the target dataset/folder: exp: `/pool/data/backups`
-- create a file or folder called `.share.online` under `/pool/data/backups`
+- setup the target dataset/directory: exp: `/pool/data/backups`
+- create a file or directory called `.share.online` under `/pool/data/backups`
 - schedule the script to run after the pfsense backup script using
 - `bash pfsense_config.sh -in "/pool/data/tftp" "/pool/data/backups" ".share.online"`
 - script will start the TFTP server, wait, stop the TFTP server
@@ -96,8 +96,8 @@ README.MD
 # - target_mount_point: mount point target dataset or directory relative to the main freeBSD host
 # - filecheck_mount_point: name of a file or directory in the root of $target_mount_point. Used to verify that the target directory is properly mounted
 # >>XXXX
-target_mount_point=""
-filecheck_mount_point=""
+target_mount_point="/mnt/my_pool/settings"
+filecheck_mount_point=".share.online"
 # <<XXXX
 
 # Name of the directory where backups are stored
@@ -106,9 +106,9 @@ filecheck_mount_point=""
 backup_dir_name="pfsense_config"
 # <<XXXX
 
-# TFTP root folder (where source files are sent from pfsense)
+# TFTP root directory (where source files are sent from pfsense)
 # >>XXXX
-source_dir=""
+source_dir="/mnt/my_pool/tftproot"
 # <<XXXX
 
 
@@ -122,17 +122,13 @@ log_file_name_stderr="__ERROR__$log_file_name" # only stderr
 # <<XXXX
 
 # Option to prune archive files older than x days
-# If you manually move an archive file to the target subfolder 'archive_dir_name', it will be excluded from pruning
+# If you manually move an archive file to the target subdirectory 'archive_dir_name', it will be excluded from pruning
 # - keep_days: max days before deleting backup
 # - archive_dir_name: dir name where backups will not be pruned if older than $keep_days
 # >>XXXX
 keep_days=180
 archive_dir_name="keep"
 # <<XXXX
-
-# Script path and file name
-#script_path=$(dirname "$0")
-script_name=$(basename "$0")
 
 # Binary paths
 # Run 'command -v openssl' to properly set the paths, if they change in a freeBSD release
@@ -156,9 +152,15 @@ find="/usr/bin/find"
 rm="/bin/rm"
 #mv="/bin/mv"
 tee="/usr/bin/tee"
+#cut="/usr/bin/cut"
+#dirname="/usr/bin/dirname"
+basename="/usr/bin/basename"
+#cat="/bin/cat"
+#hostname="/bin/hostname"
+#ls="/bin/ls"
 
 # Array with all binary paths to test
-binary_paths=( "$mkdir" "$touch" "$sleep" "$service" "$cp" "$find" "$rm" "$tee" )
+binary_paths=( "$mkdir" "$touch" "$sleep" "$service" "$cp" "$find" "$rm" "$tee" "$basename" )
 # <<XXXX
 
 # Backup source files:
@@ -193,11 +195,12 @@ tftp_service_timer="900" # 15 minutes
 # - log_path: directory path where log files will be stored ($target_mount_point/logs)
 # - log_file: path to stdout+stderr log file ($log_path/$log_file_name)
 # - log_file_stderr: path to stderr log file ($log_path/$log_file_name_stderr)
+# - POSITIONAL_PARAMS: array with all positional arguments (args without "-" prefix)
 declare target_dir
 declare log_path
 declare log_file
 declare log_file_stderr
-declare -a POSITIONAL_PARAMS # any other arguments without "-" prefix
+declare -a POSITIONAL_PARAMS
 
 # Return value from show_error() used to keep success/error code status of commands ($?)
 # - used to exit on a command error after calling show_error() function
@@ -236,7 +239,7 @@ DEBUG_CODE
     # - ensure the target mount point is properly mounted before creating any files on the target
     if [ ! -f "$target_mount_point/$filecheck_mount_point" ] && [ ! -d "$target_mount_point/$filecheck_mount_point" ]; then
         show_error 1 "ERROR: TARGET DIRECTORY NOT MOUNTED" \
-            "ensure the directory is properly mounted and the below file/dir exists at its root:" \
+            "Ensure the target directory is mounted and the below file/dir exists at its root:" \
             "$target_mount_point/$filecheck_mount_point"
         exit 1
     fi
@@ -244,7 +247,7 @@ DEBUG_CODE
     # - ensure the target directory is writable
     if [ ! -w "$target_mount_point" ]; then
         show_error 1 "ERROR: TARGET DIRECTORY NOT WRITABLE" \
-            "ensure the directory is properly mounted and writable by current user:" \
+            "Ensure the target directory is properly mounted and writable by current user:" \
             "$target_mount_point"
         exit 1
     fi
@@ -300,6 +303,11 @@ function main() {
     #$chmod 700 "$target_dir" || show_error $? "ERROR setting permissions of target directory: $target_dir"
     #[ "$error_exit" -eq 0 ] || exit "$error_exit"
 
+    # Create the $archive_dir_name where user can move files that script will not prune after $keep_days
+    # - chown/chmod left to the user to respect any SMB/ACLs existing permissions
+    $mkdir -p "$target_dir/$archive_dir_name" || show_error $? "ERROR creating archieve keep directory: $target_dir/$archive_dir_name"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
+
     echo ""
     echo "Starting pfSense config files backup"
     tftp_service_listener
@@ -321,15 +329,14 @@ function main() {
     # 3rd tee writes STDERR to our main log file so that it contains all the screen equivalent output (stdout + stderr)
     # 3d tee redirects its STDOUT back to STDERR so that we preserve {script block} STDERR on the terminal STDERR
 
-# Backup TrueNAS settings
+# Backup pfSense settings
 function save_config() {
-    # Copy all config files to target directory
     echo ""
     echo "---Saving config files---"
     echo "> Processing config files in $source_dir"
 
     # Check if source directory exists and can be read
-    if ! [ -d "$source_dir" ] || ! [ -r "$source_dir" ]; then
+    if [ ! -d "$source_dir" ] || [ ! -r "$source_dir" ]; then
         show_error 1 "ERROR: Cannot find/read source directory: $source_dir"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
@@ -343,9 +350,9 @@ function save_config() {
         # Ensure the returned $file exists in case directory $source_dir does not exist or is empty
         # - in that case, $file gets assigned the "$source_files" literal string
         #   to avoid this, we can also use "shopt -s nullglob" before the loop, then "shopt -u nullglob" after
-        filename=$(basename "$file")
+        filename=$($basename "$file")
         if [ ! -f "$file" ] && [ ! -d "$file" ]; then
-            show_error 1 "ERROR: Empty source folder $source_dir"
+            show_error 1 "ERROR: Empty source directory $source_dir"
             exit 1
         fi
 
@@ -469,7 +476,7 @@ function save_remote_logfiles() {
     echo "---Saving pfsense remote log files---"
 
     # Check if source directory exists and can be read
-    if ! [ -d "$source_dir" ] || ! [ -r "$source_dir" ]; then
+    if [ ! -d "$source_dir" ] || [ ! -r "$source_dir" ]; then
         show_error 1 "ERROR: Cannot find/read source directory: $source_dir"
         [ "$error_exit" -eq 0 ] || exit "$error_exit"
     fi
@@ -480,12 +487,12 @@ function save_remote_logfiles() {
     # Start moving log files
     copied_files=0
     for file in "$source_dir_new"/*; do
-        filename=$(basename "$file")
+        filename=$($basename "$file")
         # Ensure the returned $file exists in case $source_dir is empty directory
         # - in that case, $file gets assigned the "$source_files" literal string
         #   to avoid this, we can also use "shopt -s nullglob" before the loop, then "shopt -u nullglob" after
         if [ ! -f "$file" ] && [ ! -d "$file" ]; then
-            show_error 1 "ERROR: Empty source folder $source_dir"
+            show_error 1 "ERROR: Empty source directory $source_dir"
             exit 1
         fi
 
@@ -555,6 +562,61 @@ function rm_old_backups() {
     $find "$target_dir" -type f -not -path "*/$archive_dir_name/*" \( -name '*.xml' -o -name '*.rar' -o -name '*.gpg' -o -name '*.tar' \) -mtime +"$keep_days" -exec $rm -v {} \;
 }
 
+# Check if a received arg is an integer (exclude -/+ signs)
+function is_unsigned_integer() {
+    command_status=1
+    [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_unsigned_integer() needs one argument"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
+
+    # Bash only
+    [[ "$1" =~ ^[0-9]+$ ]] && command_status=0 # is an integer
+
+    return "$command_status"
+
+: <<'POSIX_CODE'
+    # Posix compatible
+    case "$1" in
+        *[!0-9]*|'')
+            # Not an integer
+            return "$command_status"
+            ;;
+        *)
+            # is a valid integer
+            command_status=0
+            return "$command_status"
+            ;;
+    esac
+POSIX_CODE
+}
+
+: <<'COMMENTED_CODE'
+# Check if a received arg is a signed integer (include -/+ leading signs)
+function is_signed_integer() {
+    command_status=1
+    [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_signed_integer() needs one argument"
+    [ "$error_exit" -eq 0 ] || exit "$error_exit"
+
+    # Bash only
+    [[ "$1" =~ ^[+-]?[0-9]+$ ]] && command_status=0 # is a signed integer
+    return "$command_status"
+
+: <<'POSIX_CODE'
+    # Posix compatible
+    case ${1#[-+]} in
+        *[!0-9]*|'')
+            # Not a signed integer
+            return "$command_status"
+            ;;
+        *)
+            # is a valid signed integer
+            command_status=0
+            return "$command_status"
+            ;;
+    esac
+POSIX_CODE
+}
+COMMENTED_CODE
+
 # Log passed args to stderr and preserve error code from caller
 # - call syntax: show_error $? "error msg 1" "error message 2"...
 # - after function call, use this line of code: [ "$error_exit" -eq 0 ] || exit "$error_exit"
@@ -562,28 +624,19 @@ function rm_old_backups() {
 # - we do not exit here else stderr gets flushed after the command prompt display
 function show_error() {
     # $1 must be an integer value because it is used as a return/exit code
-    error_exit="$1"
-    curr_date=$(date)
+    error_time=$(date)
 
-    # Bash option:
-    # if ! [[ "$error_exit" =~ ^[0-9]+$ ]]; then echo "ERROR: Not an integer"; done
+    if ! is_unsigned_integer "$1"; then
+        {
+            echo "INTERNAL ERROR IN FUNCTION show_error()"
+            echo "function arg1=$1"
+            echo "expected: integer value for arg1"
 
-    # Posix sh:
-    case ${error_exit#[-+]} in
-        *[!0-9]*|'')
-            {
-                echo "INTERNAL ERROR IN FUNCTION show_error()"
-                echo "function arg1=$1"
-                echo "expected: integer value for arg1"
-
-                printf "!!!! %s !!!!\n" "$curr_date"
-                echo ""
-            } >&2
-            exit 1 # fatal error, exit
-            ;;
-#       *)
-#           echo it is a number;;
-    esac
+            printf "!!!! %s !!!!\n" "$error_time"
+            echo ""
+        } >&2
+        exit 1 # fatal error, exit
+    fi
 
     # Ensure the function is called with at least two args and that there is an error message to display
     if [ "$#" -lt  2 ] || [ -z "$2" ]; then
@@ -592,11 +645,14 @@ function show_error() {
             echo "function arg2 not found or empty string"
             echo "expected arg2 to be a string with error message"
 
-            printf "!!!! %s !!!!\n" "$curr_date"
+            printf "!!!! %s !!!!\n" "$error_time"
             echo ""
         } >&2
         exit 1 # fatal error, exit
     fi
+
+    # Set error exit
+    error_exit="$1"
 
     # Print to stderr each arg (error message) in a separate line
     shift # $1 is now the first error message
@@ -605,7 +661,7 @@ function show_error() {
             echo "$error_msg"
         done
 
-        printf "!!!! %s !!!!\n" "$curr_date"
+        printf "!!!! %s !!!!\n" "$error_time"
         echo ""
     } >&2
 
@@ -632,6 +688,8 @@ function parseArguments() {
     # Args class count
     pos_args=0 # positional args count
 
+    script_name=$($basename "$0")
+
     # Posix sh:
     #while [ $# -ne 0 ]; do
     # Bash:
@@ -652,7 +710,7 @@ function parseArguments() {
                     exit 1
                 fi
                 ;;
-            -?|-help)
+            -?|--help)
                 printVersion
                 shift
                 exit
@@ -713,21 +771,23 @@ function parseArguments() {
 
 # Print version and syntax
 function printVersion() {
+    script_name=$($basename "$0")
+
     echo ""
     echo "$script_name version $version"
     echo "https://github.com/PhilZ-cwm6/truenas_scripts"
     echo "usage: $script_name.sh [-options] [target_mount_point] [filecheck_mount_point]"
     echo "- target_mount_point   : target dataset/directory for the backup"
     echo "- filecheck_mount_point: file/dir in 'target_mount_point' to ensure that the target is properly mounted"
-    echo "- Options : [-in|--source-dir][-?|-help]"
+    echo "- Options : [-in|--source-dir][-?|--help]"
 }
+
+# Check if all the binary paths are properly set
+checkBinaries "${binary_paths[@]}"
 
 # Parse script arguments
 parseArguments "$@" || show_error $? "ERROR parsing script arguments"
 [ "$error_exit" -eq 0 ] || exit "$error_exit"
-
-# Check if all the binary paths are properly set
-checkBinaries "${binary_paths[@]}"
 
 # Check if target and log paths are mounted and writable
 # - preserve positional params args (not used currently)
