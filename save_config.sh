@@ -122,17 +122,26 @@ echo 'my_super_pass' >save_config.pass
 ```
 
 ### EXAMPLES
-- Exp 1: `save_config.sh`
+- Exp 1:
+  ```
+  save_config.sh
+  ```
     - will save the config file in default openssl encrypted format and store it in local directory `$target_mount_point/save_config`
     - the default openssl iterations count is used
     - `$target_mount_point` and `$filecheck_mount_point` variables must be set in script
 
-- Exp 2: `save_config.sh -rar -gpg -ssl -tar -p /pool/data/home/user/my_passfile.pass`
+- Exp 2:
+  ```
+  save_config.sh -rar -gpg -ssl -tar -p /pool/data/home/user/my_passfile.pass
+  ```
     - will save the config files in encrypted openssl format, and also to rar, gpg and tar formats
     - `$target_mount_point` and `$filecheck_mount_point` variables must be set in script
     - read password from file `/pool/data/home/user/my_passfile.pass`
 
-- Exp 3: `save_config.sh -rar -ssl -iter 9000000 "/mnt/pool/tank/config" ".config.online"`
+- Exp 3:
+  ```
+  save_config.sh -rar -ssl -iter 9000000 "/mnt/pool/tank/config" ".config.online"
+  ```
     - generate an openssl and a rar encrypted backups
     - the encrypted ssl file will have 900000 iterations
     - backup files are created in `/mnt/pool/tank/config` dataset under default `save_config` directory
@@ -140,11 +149,17 @@ echo 'my_super_pass' >save_config.pass
     - the log files will be saved to `/mnt/pool/tank/config/logs` directory
     - this will override any `$filecheck_mount_point` and `$target_mount_point` variables in script
 
-- Exp 4: `save_config.sh -d -in encrypted-file.aes -iter 500000`
+- Exp 4:
+  ```
+  save_config.sh -d -in encrypted-file.aes -iter 500000
+  ```
     - decrypt the `encrypted-file.aes`, assuming default ssl format but with a custom 500000 iterations count
     - output file is created in local directory under a subdirectory named `config.NNNN`
 
-- Exp 5: `save_config.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass`
+- Exp 5:
+  ```
+  save_config.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass
+  ```
     - decrypt the rar `encrypted-config.rar` file and output to the directory `/home/admin/config`
     - read password from file `/pool/data/home/user/my_passfile.pass`
 

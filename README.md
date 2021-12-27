@@ -106,17 +106,26 @@ echo 'my_super_pass' >save_config.pass
 ```
 
 ### EXAMPLES
-- Exp 1: `save_config.sh`
+- Exp 1:
+  ```
+  save_config.sh
+  ```
     - will save the config file in default openssl encrypted format and store it in local directory `$target_mount_point/save_config`
     - the default openssl iterations count is used
     - `$target_mount_point` and `$filecheck_mount_point` variables must be set in script
 
-- Exp 2: `save_config.sh -rar -gpg -ssl -tar -p /pool/data/home/user/my_passfile.pass`
+- Exp 2:
+  ```
+  save_config.sh -rar -gpg -ssl -tar -p /pool/data/home/user/my_passfile.pass
+  ```
     - will save the config files in encrypted openssl format, and also to rar, gpg and tar formats
     - `$target_mount_point` and `$filecheck_mount_point` variables must be set in script
     - read password from file `/pool/data/home/user/my_passfile.pass`
 
-- Exp 3: `save_config.sh -rar -ssl -iter 9000000 "/mnt/pool/tank/config" ".config.online"`
+- Exp 3:
+  ```
+  save_config.sh -rar -ssl -iter 9000000 "/mnt/pool/tank/config" ".config.online"
+  ```
     - generate an openssl and a rar encrypted backups
     - the encrypted ssl file will have 900000 iterations
     - backup files are created in `/mnt/pool/tank/config` dataset under default `save_config` directory
@@ -124,11 +133,17 @@ echo 'my_super_pass' >save_config.pass
     - the log files will be saved to `/mnt/pool/tank/config/logs` directory
     - this will override any `$filecheck_mount_point` and `$target_mount_point` variables in script
 
-- Exp 4: `save_config.sh -d -in encrypted-file.aes -iter 500000`
+- Exp 4:
+  ```
+  save_config.sh -d -in encrypted-file.aes -iter 500000
+  ```
     - decrypt the `encrypted-file.aes`, assuming default ssl format but with a custom 500000 iterations count
     - output file is created in local directory under a subdirectory named `config.NNNN`
 
-- Exp 5: `save_config.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass`
+- Exp 5:
+  ```
+  save_config.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass
+  ```
     - decrypt the rar `encrypted-config.rar` file and output to the directory `/home/admin/config`
     - read password from file `/pool/data/home/user/my_passfile.pass`
 
@@ -356,18 +371,27 @@ echo 'my_super_pass' >host_config_backup.pass
   + App backups will include `minidlna_paths`and `unifi_controller_paths` specified above
 
 ### EXAMPLES
-- Exp 1: `host_config_backup.sh -host truenas`
+- Exp 1:
+  ```
+  host_config_backup.sh -host truenas
+  ```
     - will save the backup files in default openssl encrypted format and store them in local directory `$target_mount_point/truenas`
     - the default openssl iterations count is used
     - `$main_target_mount_point` and `$filecheck_mount_point` variables must be set in script
 
-- Exp 2: `host_config_backup.sh -host 'plex_jail' -rar -gpg -ssl -tar -p /mnt/scripts/my_passfile.pass`
+- Exp 2:
+  ```
+  host_config_backup.sh -host 'plex_jail' -rar -gpg -ssl -tar -p /mnt/scripts/my_passfile.pass
+  ```
     - will save the backup files in encrypted openssl format, and also to rar, gpg and tar formats
     - backups will be stored under `$jail_target_mount_point/plex_jail/` directory
     - `$jail_target_mount_point` and `$filecheck_mount_point` variables must be set in script
     - read password from file `/mnt/scripts/my_passfile.pass`
 
-- Exp 3: `host_config_backup.sh -host mysql -rar -ssl -iter 9000000 "/mnt/config" ".config.online"`
+- Exp 3:
+  ```
+  host_config_backup.sh -host mysql -rar -ssl -iter 9000000 "/mnt/config" ".config.online"
+  ```
     - generate an openssl and a rar encrypted backups
     - the encrypted ssl file will have 900000 iterations
     - backup files are created in `/mnt/config/mysql` directory
@@ -375,11 +399,17 @@ echo 'my_super_pass' >host_config_backup.pass
     - the log files will be saved to `/mnt/config/logs` directory
     - this will override any `$filecheck_mount_point` and `$jail_target_mount_point` variables in script
 
-- Exp 4: `host_config_backup.sh -d -in encrypted-file.aes -iter 500000`
+- Exp 4:
+  ```
+  host_config_backup.sh -d -in encrypted-file.aes -iter 500000
+  ```
     - decrypt the `encrypted-file.aes`, assuming default ssl format but with a custom 500000 iterations count
     - output file is created in local directory under a subdirectory named `config.NNNN`
 
-- Exp 5: `host_config_backup.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass`
+- Exp 5:
+  ```
+  host_config_backup.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass
+  ```
     - decrypt the rar `encrypted-config.rar` file and output to the directory `/home/admin/config`
     - read password from file `/pool/data/home/user/my_passfile.pass`
 
@@ -459,10 +489,16 @@ echo 'my_super_pass' >host_config_backup.pass
 - logs are moved to `/pool/data/backups/logs` directory
 
 ### EXAMPLES
-- Exp 1: `pfsense_config.sh -in /pool/data/tftp`
+- Exp 1:
+  ```
+  pfsense_config.sh -in /pool/data/tftp
+  ```
     - move the config and log files from `/pool/data/tftp` to target directory defined in script `$target_mount_point`
     - the file/dir `$target_mount_point/$filecheck_mount_point` must exist
-- Exp 2: `pfsense_config.sh /mnt/tank/dataset .online.dataset -in /pool/data/tftp`
+- Exp 2:
+  ```
+  pfsense_config.sh /mnt/tank/dataset .online.dataset -in /pool/data/tftp
+  ```
     - check if target dataset is online using the file/dir `/mnt/tank/dataset/.online.dataset`
     - move the config and log files from `/pool/data/tftp` to `/mnt/tank/dataset`
 
@@ -592,27 +628,42 @@ ee /root/scripts/pfsense_send_config.pass
 - check the script options to run in backup only mode, backup and upload modes or upload only mode
 
 ### EXAMPLES:
-- Exp 1: `pfsense_send_config.sh`
+- Exp 1:
+  ```
+  pfsense_send_config.sh
+  ```
     - will save the config file in openssl encrypted format and store it in local directory '$target_mount_point/pfsense_send_config'
     - the encrypted xml is compatible with restore from pfsense GUI
     - '$target_mount_point' and '$filecheck_mount_point' variables must be set in script
     - default is '/root/pfsense_send_config' and the directory '/root/scripts' must exist
     - if remote_host and remote_port variables are specified in script, it will move backups and logs to the specified TFTP server
 
-- Exp 2: `pfsense_send_config.sh -host truenas.local -rar -gpg -ssl -tar -p /pool/data/home/user/my_passfile.pass`
+- Exp 2:
+  ```
+  pfsense_send_config.sh -host truenas.local -rar -gpg -ssl -tar -p /pool/data/home/user/my_passfile.pass
+  ```
     - will save the config files in pfsense compatible xml encrypted openssl format, and also to rar, gpg and tar formats
     - config and log files are then moved to the tftp server `truenas.local` on default port 69
     - read password from file `/pool/data/home/user/my_passfile.pass`
 
-- Exp 3: `pfsense_send_config.sh -host 192.168.30.30/config -p 750`
+- Exp 3:
+  ```
+  pfsense_send_config.sh -host 192.168.30.30/config -p 750
+  ```
     - will save the config file as a pfsense compatible openssl encrypted file
     - it will move the backup and logs to the tftp server `192.168.30.30/config/` on port 750
 
-- Exp 4: `pfsense_send_config.sh -host truenas.local -u`
+- Exp 4:
+  ```
+  pfsense_send_config.sh -host truenas.local -u
+  ```
     - No backup files will be created
     - Any previous backup and log files will be moved to the tftp server `truenas.local` on default port 69
 
-- Exp 5: `pfsense_send_config.sh -host 192.168.30.30 -rar -ssl -iter 9000000 /mnt/media/usb_key .pfsense.key`
+- Exp 5:
+  ```
+  pfsense_send_config.sh -host 192.168.30.30 -rar -ssl -iter 9000000 /mnt/media/usb_key .pfsense.key
+  ```
     - suppose we want to save the backups and logs on an USB key mounted in pfsense under the directory /mnt/media/usb_key
     - this command will save the config files as both an encrypted xml and rar format
     - the encrypted ssl file will have 900000 iterations (you cannot restore it using pfsense GUI)
@@ -621,10 +672,16 @@ ee /root/scripts/pfsense_send_config.pass
     - the log files will be saved to `/mnt/media/usb_key/logs`
     - config and log files will be moved to the tftp server `192.168.30.30` on defaukt port 69
 
-- Exp 6: `pfsense_send_config.sh -d -in encrypted-file.xml -iter 500000 -p /pool/data/home/user/my_passfile.pass`
+- Exp 6:
+  ```
+  pfsense_send_config.sh -d -in encrypted-file.xml -iter 500000 -p /pool/data/home/user/my_passfile.pass
+  ```
     - decrypt the 'encrypted-file.xml', assuming default ssl format but with a custom 500000 iterations count
     - output file is created in local directory under a subdirectory named 'config.NNNN'
     - read password from file `/pool/data/home/user/my_passfile.pass`
 
-- Exp 7: `pfsense_send_config.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config`
+- Exp 7:
+  ```
+  pfsense_send_config.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config
+  ```
     - decrypt the rar 'encrypted-config.rar' file and output to the directory `/home/admin/config`

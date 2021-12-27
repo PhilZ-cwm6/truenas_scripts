@@ -80,10 +80,16 @@ version=1.3.8
 - logs are moved to `/pool/data/backups/logs` directory
 
 ### EXAMPLES
-- Exp 1: `pfsense_config.sh -in /pool/data/tftp`
+- Exp 1:
+  ```
+  pfsense_config.sh -in /pool/data/tftp
+  ```
     - move the config and log files from `/pool/data/tftp` to target directory defined in script `$target_mount_point`
     - the file/dir `$target_mount_point/$filecheck_mount_point` must exist
-- Exp 2: `pfsense_config.sh /mnt/tank/dataset .online.dataset -in /pool/data/tftp`
+- Exp 2:
+  ```
+  pfsense_config.sh /mnt/tank/dataset .online.dataset -in /pool/data/tftp
+  ```
     - check if target dataset is online using the file/dir `/mnt/tank/dataset/.online.dataset`
     - move the config and log files from `/pool/data/tftp` to `/mnt/tank/dataset`
 README.MD

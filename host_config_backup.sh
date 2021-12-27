@@ -183,18 +183,27 @@ echo 'my_super_pass' >host_config_backup.pass
   + App backups will include `minidlna_paths`and `unifi_controller_paths` specified above
 
 ### EXAMPLES
-- Exp 1: `host_config_backup.sh -host truenas`
+- Exp 1:
+  ```
+  host_config_backup.sh -host truenas
+  ```
     - will save the backup files in default openssl encrypted format and store them in local directory `$target_mount_point/truenas`
     - the default openssl iterations count is used
     - `$main_target_mount_point` and `$filecheck_mount_point` variables must be set in script
 
-- Exp 2: `host_config_backup.sh -host 'plex_jail' -rar -gpg -ssl -tar -p /mnt/scripts/my_passfile.pass`
+- Exp 2:
+  ```
+  host_config_backup.sh -host 'plex_jail' -rar -gpg -ssl -tar -p /mnt/scripts/my_passfile.pass
+  ```
     - will save the backup files in encrypted openssl format, and also to rar, gpg and tar formats
     - backups will be stored under `$jail_target_mount_point/plex_jail/` directory
     - `$jail_target_mount_point` and `$filecheck_mount_point` variables must be set in script
     - read password from file `/mnt/scripts/my_passfile.pass`
 
-- Exp 3: `host_config_backup.sh -host mysql -rar -ssl -iter 9000000 "/mnt/config" ".config.online"`
+- Exp 3:
+  ```
+  host_config_backup.sh -host mysql -rar -ssl -iter 9000000 "/mnt/config" ".config.online"
+  ```
     - generate an openssl and a rar encrypted backups
     - the encrypted ssl file will have 900000 iterations
     - backup files are created in `/mnt/config/mysql` directory
@@ -202,11 +211,17 @@ echo 'my_super_pass' >host_config_backup.pass
     - the log files will be saved to `/mnt/config/logs` directory
     - this will override any `$filecheck_mount_point` and `$jail_target_mount_point` variables in script
 
-- Exp 4: `host_config_backup.sh -d -in encrypted-file.aes -iter 500000`
+- Exp 4:
+  ```
+  host_config_backup.sh -d -in encrypted-file.aes -iter 500000
+  ```
     - decrypt the `encrypted-file.aes`, assuming default ssl format but with a custom 500000 iterations count
     - output file is created in local directory under a subdirectory named `config.NNNN`
 
-- Exp 5: `host_config_backup.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass`
+- Exp 5:
+  ```
+  host_config_backup.sh -d -rar -in /path/to/encrypted-config.rar -out /home/admin/config -p /pool/data/home/user/my_passfile.pass
+  ```
     - decrypt the rar `encrypted-config.rar` file and output to the directory `/home/admin/config`
     - read password from file `/pool/data/home/user/my_passfile.pass`
 
