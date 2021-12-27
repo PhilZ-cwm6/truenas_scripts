@@ -214,17 +214,17 @@ gpg -d backup_file.gpg | tar -xvf -
 - The name of the local subdirectory `$host_name` is the hostname of the TrueNAS/jail server to backup AND must be specified by command line option `-host|--host-name`
 - This choice is by design to double check that user specified the proper host to backup and started the script from that host
 - This limitation can be bypassed by using the batch script `backup_cronjob.sh` to backup multiple jails and the host in a single cron job
-
+<br /><br />
 - By default, an openssl aes256 encryped backup file is generated
 - Optionally, encrypted rar5 or gpg files can be generated or even a non compressed tar file
 - Multiple output formats can be specified at the same time
 - If no file format is specified, script will assume the openssl encryption as default
 - This default file format can be changed by editing in script value `$default_encryption`
-
+<br /><br />
 - Decrypting backup files is done with the `-d|--decrypt` option, associated with `-in|--input-file` option
 - Optional decrypting options are `-out|--out-dir` (output directory) and any input file format option `-ssl|-rar|-gpg|-tar`
 - See below examples for how to decrypt
-
+<br /><br />
 - A password file containing the encryption/decryption password must be used
 - Empty passwords are not allowed
 - Default password file is `script_path/script_basename.pass`
@@ -285,7 +285,7 @@ gpg -d backup_file.gpg | tar -xvf -
 - exp: /mnt/my_pool/my_dataset
 - SSH / shell into TrueNAS as root
 - create a directory to hold your scripts and ensure it can only be read by root to prevent access to your passwords
-- in the jails to backup, add the dataset as a mount point in the jail. Exp `/mnt/my_dataset`
+- in the jails to backup, add the dataset as a mount point in the jail. Exp. `/mnt/my_dataset`
 ```
 mkdir /mnt/my_pool/my_dataset/scripts
 chmod 700 scripts
@@ -308,12 +308,15 @@ chown root:wheel host_config_backup.pass
 ```
 echo 'my_super_pass' >host_config_backup.pass
 ```
-- edit the in script associative arrays and create new ones with your jails names, apps names and apps paths
-  example: we have a jail named `my_jail` hosting two apps, `minidlna` and `unifi_controller`
-           we want to backup `unifi_controller` database twice a week at 7pm
-           we want to backup `unifi_controller` backup folder daily at 7pm
-           we want to backup `minidlna` custom conf on each run
-           we want to backup `minidlna` init.d file on 1st and 15th day of the month at 8am
+- edit the in script associative arrays and create new ones with your jails names, apps names and apps paths<br />
+  Let's suppose that we have a jail named `my_jail` hosting two apps, `minidlna` and `unifi_controller`<br />
+  We want to backup:<br />
+  `unifi_controller` database twice a week at 7pm<br />
+  `unifi_controller` backup folder daily at 7pm<br />
+  `minidlna` custom conf on each run<br />
+  `minidlna` init.d file on 1st and 15th day of the month at 8am
+  <br /><br />
+  We should do the below edits of the apps and paths arrays:
   + APP PATHS AND SCHEDULE: define custom arrays with the paths and schedule for each app:
     ```
     unifi_controller_paths=( "/usr/local/share/java/unifi/data" "Sun,Mon,19h"
@@ -323,14 +326,15 @@ echo 'my_super_pass' >host_config_backup.pass
                      "/usr/local/etc/rc.d/minidlna" "1,15,8h"
     )
     ```
-    You can add as much path/schedule pairs as you want per app
-    Above example will backup:
-        `/usr/local/share/java/unifi/data` directory only on Sundays, Mondays if it is 19:00-19:59 hour
-        `/usr/local/share/java/unifi/data/backup` directory everyday if it is 19:00-19:59 hour
-        `/usr/local/etc/minidlna.conf` file on each run
+    You can add as much path/schedule pairs as you want per app.<br />
+    Above example will backup:<br />
+        `/usr/local/share/java/unifi/data` directory only on Sundays, Mondays if it is 19:00-19:59 hour<br />
+        `/usr/local/share/java/unifi/data/backup` directory everyday if it is 19:00-19:59 hour<br />
+        `/usr/local/etc/minidlna.conf` file on each run<br />
         `/usr/local/etc/rc.d/minidlna` file on first and 15th of the month if it is 8:00-8:59 am
-  + APP NAMES POINTING TO THEIR ABOVE PATHS:
-    app `unifi_controller` has above `unifi_controller_paths` paths
+  <br /><br />
+  + APP NAMES POINTING TO THEIR ABOVE PATHS:<br />
+    app `unifi_controller` has above `unifi_controller_paths` paths<br />
     app `minidlna` has above `minidlna_paths` paths
     ```
     allAppPaths[unifi_controller]=unifi_controller_paths[@]
@@ -343,7 +347,9 @@ echo 'my_super_pass' >host_config_backup.pass
     )
     ```
   + ALL HOSTS WITH THE APPS THEY HOST DEFINED ABOVE
-    `allAppsInHost[my_jail]=allAppsIn_my_jail[@]`
+    ```
+    allAppsInHost[my_jail]=allAppsIn_my_jail[@]
+    ```
   + Start the script from `my_jail` jail with command: `host_config_backup.sh -host 'my_jail' '/mnt/settings/backups' '.settings.online'`
   + This will create backups under `/mnt/settings/backups/my_jail/` directory
   + Backups will include all user directories under `/home` and the `/root` user directory
