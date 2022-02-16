@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Cronjob to start a cascade of "host_config_backup.sh" calls for main host and selected jails
+# Jails need to be online. This can be overriden by adding -f to the iocage command
+
 # Script v3.8.4
 
 # Editable paths: >>XXXX <<XXXX
