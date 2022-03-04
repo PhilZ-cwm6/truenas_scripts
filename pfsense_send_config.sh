@@ -30,6 +30,8 @@ version=1.4.0
   + config files are encrypted in openssl with a pfsense compatible format that can be restored from the GUI
   + config files can also be encrypted using rar, gpg or stored as non encrypted tar
 - Decrypt/Extract an openssl, rar, gpg or tar config file
+- Default to pfsense version > 2.6.0 new encryption format with iterations count of 500k
+- When decrypting openssl config, try alternative 2.6.0 or new 2.6.x formats if one format fails
 
 ### SYNOPSIS
 - Backups are performed and encrypted on the pfsense server
@@ -59,6 +61,8 @@ version=1.4.0
 
 - Decrypting backup files is done with the `-d|--decrypt` option, associated with `-in|--input-file` option
 - Optional decrypting options are `-out|--out-dir` (output directory) and any input file format option `-ssl|-rar|-gpg|-tar`
+- If decryption fails with a default openssl iterations count, script will automatically try the alternative count
+  + supports automatic detection of pre/post pfsense v2.6.x iterations count change
 - See below examples for how to decrypt
 
 - A password file containing the encryption/decryption password must be used
@@ -291,12 +295,27 @@ nmap_sleep=30 # in seconds
 nmap_retry=30 # 30 times (x30 sec = 15 mn)
 
 # Encryption defaults
-# - openssl_iter: see below section for details
+# - openssl_iter_default:
+#   + default value for below $openssl_iter variable
+#   + it is the pbkdf2 iterations count: start with 300000 and increase depending on your CPU speed
+#   + significant only if openssl_crypt is true
+#   + can be either an empty string or an integer
+#   + set to empty string for default openssl pbkdf2 iteration count,
+#     currently of 10000 as per source code (too low, security wise)
+#   + !!! changing this will break native pfsense import of the xml encrypted file !!!
+#   + pfsense version = 2.6.0: uses openssl 10000 default value
+#   + pfsense version > 2.6.0: default is 500000, with fallback to 10000 if restore settings fails at 500000
+#   + If Decrytion of a config file fails, it will try alternative iterations count of pfsense versions
+#   + If user specifies a custom iter count for decryption, no alternative value will be tried
 # - default_encryption: any of ssl|rar|gpg|tar
 #   + if no encryption option is defined by command line, use this encryption mode
 #   + if set to empty or non valid value, and no file format is set by command line, script will error
+openssl_iter_v260="10000" # iterations count of pfsense version = 2.6.0
+openssl_iter_v26x="500000" # iterations count of pfsense version > 2.6.0
+
 # >>XXXX
-openssl_iter=""
+#openssl_iter_default="" # for pfsense version = 2.6.0 (uses default openssl command iterations count)
+openssl_iter_default="$openssl_iter_v26x" # for pfsense version > 2.6.0
 default_encryption="ssl" # allowed values: ssl,rar,gpg,tar
 # <<XXXX
 
@@ -350,11 +369,7 @@ remote_target_path=""
 #   + if $openssl_iter is left empty, use default openssl iter count
 #     which is compatible with native pfsense encryption
 # - openssl_iter [-iter|--iterations-count]: an integer
-#   + pbkdf2 iterations: start with 300000 and increase depending on your CPU speed
-#   + significant only if openssl_crypt is true
-#   + set to empty string for default openssl pbkdf2 iteration count,
-#     currently of 10000 as per source code (too low, security wise)
-#   + !!! changing this will break native pfsense import of the xml encrypted file !!!
+#   + check above $openssl_iter_default variable for details
 # - rar_crypt [-rar|--rar-encryption]:
 #   + generate a rar encrypted config file
 # - gpg_crypt  [-gpg|--gpg-encryption]:
@@ -362,7 +377,7 @@ remote_target_path=""
 # - tar_no_crypt [-tar|--unencrypted-tar]:
 #   + generate a non encrypted tar backup file, not recommended
 openssl_crypt="false"
-#openssl_iter="900000" # defined above in user custom options
+openssl_iter="$openssl_iter_default"
 rar_crypt="false"
 gpg_crypt="false"
 tar_no_crypt="false"
@@ -577,7 +592,6 @@ save_openssl() {
     get_password
 
     # Check iterations count if set in script or by command line option
-    # - case iter_count is empty string: use default openssl command iterations count
     if [ -n "$openssl_iter" ]; then
         # ensure the specified iter count is an integer
         is_unsigned_integer "$openssl_iter" || show_error 1 "ERROR: iteration count invalid option: $openssl_iter"
@@ -590,6 +604,7 @@ save_openssl() {
     # - instead of using $openssl_iter unquoted, we use 'unquoted expansion with an alternate value'
     #   it allows the unquoted empty default value without error, while the non empty $openssl_iter is quoted
     #   https://github.com/koalaman/shellcheck/wiki/SC2086
+    # - case openssl_iter is empty string: use default openssl command iterations count
     # - Note: do not double quote perl argument and keep the single unexpandable quotes
     $openssl enc -e -aes-256-cbc -salt -md sha256 -pbkdf2 ${openssl_iter:+-iter} ${openssl_iter:+"$openssl_iter"} -in "$source_file" -pass file:"$pass_file" | \
         $openssl base64 | \
@@ -934,7 +949,6 @@ extract_openssl() {
     get_password
 
     # Check iterations count if set in script or by command line option
-    # - case iter_count is empty string: use default openssl command iterations count
     if [ -n "$openssl_iter" ]; then
         # ensure the specified iter count is an integer
         is_unsigned_integer "$openssl_iter" || show_error 1 "ERROR: iteration count invalid option: $openssl_iter"
@@ -942,13 +956,40 @@ extract_openssl() {
     fi
 
     # Decrypt config file
+    # - ${openssl_iter:+-iter} ${openssl_iter:+"$openssl_iter"}: case openssl_iter is empty string, use default openssl command iterations count
     outfile=$($basename "$input_file")
     out_path="${out_path%/}" # remove trailing /
     $grep -v "config.xml" "$input_file" | \
         $openssl base64 -d | \
         $openssl enc -d -aes-256-cbc -salt -md sha256 -pbkdf2 ${openssl_iter:+-iter} ${openssl_iter:+"$openssl_iter"} -out "$out_path/$outfile" -pass file:"$pass_file"
     command_status=$?
-    [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR: failed decrypting $input_file"
+
+    # If decryption failed, check if we should try to fallback to a different iterations count
+    if [ "$command_status" -ne 0 ]; then
+        if [ -z "$openssl_iter" ] || [ "$openssl_iter" -eq "$openssl_iter_v260" ]; then
+            # User tried the v2.6.0 iterations count: try pfsense versions > 2.6.0 value
+            echo ""
+            echo "Trying iterations count of 500k for pfsense version > 2.6.0"
+            $grep -v "config.xml" "$input_file" | \
+                $openssl base64 -d | \
+                $openssl enc -d -aes-256-cbc -salt -md sha256 -pbkdf2 -iter "$openssl_iter_v26x" -out "$out_path/$outfile" -pass file:"$pass_file"
+            command_status=$?
+            [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR: failed decrypting $input_file"
+        elif [ "$openssl_iter" -eq "$openssl_iter_v26x" ]; then
+            # User tried iterations count for pfsense version > 2.6.0. Try pfsense versions = 2.6.0 value
+            echo ""
+            echo "Trying iterations count of 10k for pfsense version = 2.6.0"
+            $grep -v "config.xml" "$input_file" | \
+                $openssl base64 -d | \
+                $openssl enc -d -aes-256-cbc -salt -md sha256 -pbkdf2 -iter "$openssl_iter_v260" -out "$out_path/$outfile" -pass file:"$pass_file"
+            command_status=$?
+            [ "$command_status" -eq 0 ] || show_error "$command_status" "ERROR: failed decrypting $input_file"
+        else
+            # User specified a custom iterations count, do not try alternative methods
+            show_error "$command_status" "ERROR: failed decrypting $input_file"
+        fi
+    fi
+
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 }
 
@@ -1044,24 +1085,24 @@ get_password() {
 
 # Check if a received arg is an integer (exclude -/+ signs)
 is_unsigned_integer() {
-    command_status=1
+    ret=1
     [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_unsigned_integer() needs one argument"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # Bash only
-    #[[ "$1" =~ ^[0-9]+$ ]] && command_status=0 # is an integer
-    #return "$command_status"
+    #[[ "$1" =~ ^[0-9]+$ ]] && ret=0 # is an integer
+    #return "$ret"
 
     # Posix compatible
     case "$1" in
         *[!0-9]*|'')
             # Not an integer
-            return "$command_status"
+            return "$ret"
             ;;
         *)
             # is a valid integer
-            command_status=0
-            return "$command_status"
+            ret=0
+            return "$ret"
             ;;
     esac
 }
@@ -1069,24 +1110,24 @@ is_unsigned_integer() {
 : <<'COMMENTED_CODE'
 # Check if a received arg is a signed integer (include -/+ leading signs)
 is_signed_integer() {
-    command_status=1
+    ret=1
     [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_signed_integer() needs one argument"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # Bash only
-    #[[ "$1" =~ ^[+-]?[0-9]+$ ]] && command_status=0 # is a signed integer
-    #return "$command_status"
+    #[[ "$1" =~ ^[+-]?[0-9]+$ ]] && ret=0 # is a signed integer
+    #return "$ret"
 
     # Posix compatible
     case ${1#[-+]} in
         *[!0-9]*|'')
             # Not a signed integer
-            return "$command_status"
+            return "$ret"
             ;;
         *)
             # is a valid signed integer
-            command_status=0
-            return "$command_status"
+            ret=0
+            return "$ret"
             ;;
     esac
 }

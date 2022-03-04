@@ -511,6 +511,8 @@ echo 'my_super_pass' >host_config_backup.pass
   + config files are encrypted in openssl with a pfsense compatible format that can be restored from the GUI
   + config files can also be encrypted using rar, gpg or stored as non encrypted tar
 - Decrypt/Extract an openssl, rar, gpg or tar config file
+- Default to pfsense version > 2.6.0 new encryption format with iterations count of 500k
+- When decrypting openssl config, try alternative 2.6.0 or new 2.6.x formats if one format fails
 
 ### SYNOPSIS
 - Backups are performed and encrypted on the pfsense server
@@ -540,6 +542,8 @@ echo 'my_super_pass' >host_config_backup.pass
 
 - Decrypting backup files is done with the `-d|--decrypt` option, associated with `-in|--input-file` option
 - Optional decrypting options are `-out|--out-dir` (output directory) and any input file format option `-ssl|-rar|-gpg|-tar`
+- If decryption fails with a default openssl iterations count, script will automatically try the alternative count
+  + supports automatic detection of pre/post pfsense v2.6.x iterations count change
 - See below examples for how to decrypt
 
 - A password file containing the encryption/decryption password must be used
