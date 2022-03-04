@@ -13,7 +13,7 @@
 set -u -o pipefail
 
 # Script version
-version=1.4.1
+version=1.4.2
 
 : <<'README.MD'
 ## save_config.sh
@@ -940,26 +940,26 @@ function get_password() {
 
 # Check if a received arg is an integer (exclude -/+ signs)
 function is_unsigned_integer() {
-    command_status=1
+    ret=1
     [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_unsigned_integer() needs one argument"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # Bash only
-    [[ "$1" =~ ^[0-9]+$ ]] && command_status=0 # is an integer
+    [[ "$1" =~ ^[0-9]+$ ]] && ret=0 # is an integer
 
-    return "$command_status"
+    return "$ret"
 
 : <<'POSIX_CODE'
     # Posix compatible
     case "$1" in
         *[!0-9]*|'')
             # Not an integer
-            return "$command_status"
+            return "$ret"
             ;;
         *)
             # is a valid integer
-            command_status=0
-            return "$command_status"
+            ret=0
+            return "$ret"
             ;;
     esac
 POSIX_CODE
@@ -968,25 +968,25 @@ POSIX_CODE
 : <<'COMMENTED_CODE'
 # Check if a received arg is a signed integer (include -/+ leading signs)
 function is_signed_integer() {
-    command_status=1
+    ret=1
     [ $# -ne 1 ] && show_error 1 "ERROR: Internal Error" "is_signed_integer() needs one argument"
     [ "$error_exit" -eq 0 ] || exit "$error_exit"
 
     # Bash only
-    [[ "$1" =~ ^[+-]?[0-9]+$ ]] && command_status=0 # is a signed integer
-    return "$command_status"
+    [[ "$1" =~ ^[+-]?[0-9]+$ ]] && ret=0 # is a signed integer
+    return "$ret"
 
 : <<'POSIX_CODE'
     # Posix compatible
     case ${1#[-+]} in
         *[!0-9]*|'')
             # Not a signed integer
-            return "$command_status"
+            return "$ret"
             ;;
         *)
             # is a valid signed integer
-            command_status=0
-            return "$command_status"
+            ret=0
+            return "$ret"
             ;;
     esac
 POSIX_CODE
